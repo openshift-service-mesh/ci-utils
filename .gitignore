@@ -30,6 +30,16 @@ go.work.sum
 # Pull secret file
 pull-secret.json
 
+# Resulting cluster files
+host
+id_rsa
+kubeconfig
+kubeadmin_pass
+developer_pass
+username
+.pulumi
+*.log
+
 # Editor/IDE
 # .idea/
 # .vscode/

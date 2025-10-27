@@ -180,7 +180,6 @@ OPTIONAL ENVIRONMENT VARIABLES:
     CLUSTER_CPUS           Number of CPUs (default: 16)
     CLUSTER_MEMORY         Memory in GB (default: 64)
     CLUSTER_SPOT           Use spot instances (default: true)
-    CLUSTER_TIMEOUT        Timeout in minutes (default: 60)
     PULL_SECRET_FILE       Path to pull secret file (default: ./pull-secret.json)
     CLUSTER_TAGS           Additional tags (default: basic tags)
     BACKED_URL_TYPE        Backing URL type: "s3" or "file" (auto-detected)
@@ -361,11 +360,10 @@ set_defaults() {
 
     readonly AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-"us-east-1"}
     readonly CLUSTER_NAME=${CLUSTER_NAME:-"mapt-cluster-${SCRIPT_START_TIME}"}
-    readonly CLUSTER_VERSION=${CLUSTER_VERSION:-"4.19.13"}
+    readonly CLUSTER_VERSION=${CLUSTER_VERSION:-"4.20.0"}
     readonly CLUSTER_CPUS=${CLUSTER_CPUS:-16}
     readonly CLUSTER_MEMORY=${CLUSTER_MEMORY:-64}
     readonly CLUSTER_SPOT=${CLUSTER_SPOT:-true}
-    readonly CLUSTER_TIMEOUT=${CLUSTER_TIMEOUT:-60}
     readonly PULL_SECRET_FILE=${PULL_SECRET_FILE:-"./pull-secret.json"}
     readonly CLUSTER_TAGS=${CLUSTER_TAGS:-"tool=mapt"}
     readonly S3_BUCKET_PREFIX=${S3_BUCKET_PREFIX:-"mapt-cluster"}
@@ -396,7 +394,6 @@ set_defaults() {
     log_verbose "  Cluster CPUs: $CLUSTER_CPUS"
     log_verbose "  Cluster Memory: ${CLUSTER_MEMORY}GB"
     log_verbose "  Spot Instances: $CLUSTER_SPOT"
-    log_verbose "  Timeout: ${CLUSTER_TIMEOUT}m"
     log_verbose "  Backing URL: $BACKED_URL"
     log_verbose "  Container Engine: $CONTAINER_ENGINE"
     log_verbose "  MAPT Image: $MAPT_IMAGE"
@@ -493,12 +490,11 @@ create_cluster() {
             --tags "$CLUSTER_TAGS" \
             --version "$CLUSTER_VERSION" \
             $spot_arg \
-            --timeout "${CLUSTER_TIMEOUT}m" \
             --cpus "$CLUSTER_CPUS" \
             --memory "$CLUSTER_MEMORY"
 
     # Wait for creation to complete
-    log_info "Waiting for cluster creation to complete (timeout: ${CLUSTER_TIMEOUT}m)..."
+    log_info "Waiting for cluster creation to complete..."
     local container_id
     container_id=$($CONTAINER_ENGINE ps -q --filter "name=$CREATE_CONTAINER_NAME")
 
@@ -517,7 +513,7 @@ create_cluster() {
         local logs_pid=$!
 
         # Convert timeout to seconds
-        local timeout_seconds=$((CLUSTER_TIMEOUT * 60))
+        local timeout_seconds=1200
 
         # Wait for container to complete
         if timeout "$timeout_seconds" $CONTAINER_ENGINE wait "$container_id"; then
@@ -540,7 +536,7 @@ create_cluster() {
         fi
     else
         # Convert timeout to seconds
-        local timeout_seconds=$((CLUSTER_TIMEOUT * 60))
+        local timeout_seconds=1200
 
         if timeout "$timeout_seconds" $CONTAINER_ENGINE wait "$container_id"; then
             local exit_code
