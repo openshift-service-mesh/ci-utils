@@ -97,7 +97,7 @@ cleanup() {
             if [ "$cluster_created" = true ]; then
                 log_warn "IMPORTANT: Cluster resources may still be running in AWS!"
                 log_warn "To properly clean up:"
-                log_warn "  1. First destroy the cluster: $0 --delete-only"
+                log_warn "  1. First destroy the cluster: $0 --delete"
                 log_warn "  2. Then delete the S3 bucket: aws s3 rb s3://$S3_BUCKET_NAME --force"
             else
                 log_info "Cluster was not created, but S3 bucket may contain state files"
@@ -162,9 +162,9 @@ DESCRIPTION:
     across different environments (local development and CI/CD pipelines).
 
 OPTIONS:
-    -c, --create-only       Create cluster only (don't delete)
-    -d, --delete-only       Delete cluster only (don't create)
-    -b, --both              Create and delete cluster (default)
+    --create                Create cluster only (don't delete)
+    --delete                Delete cluster only (don't create)
+    Default (no options)    Create cluster, then delete it after completion
     -h, --help              Show this help message and exit
     -v, --verbose           Enable verbose logging
     --dry-run              Show what would be executed without running
@@ -195,7 +195,7 @@ EXAMPLES:
     $0
 
     # Create cluster only for testing
-    $0 --create-only --verbose
+    $0 --create --verbose
 
     # Custom cluster configuration
     export CLUSTER_NAME="my-test-cluster"
@@ -206,7 +206,7 @@ EXAMPLES:
 
     # Delete existing cluster
     export CLUSTER_NAME="existing-cluster"
-    $0 --delete-only
+    $0 --delete
 
 ENVIRONMENT DETECTION:
     The script automatically detects the environment:
@@ -226,7 +226,7 @@ EOF
 container_exists() {
     local container_name="$1"
     local engine="${CONTAINER_ENGINE:-podman}"
-    $engine ps -a --format "{{.Names}}" | grep -q "^${container_name}$" 2>/dev/null
+    "$engine" ps -a --format "{{.Names}}" | grep -q "^${container_name}$" 2>/dev/null
 }
 
 # Clean up containers
@@ -238,27 +238,27 @@ cleanup_containers() {
 
     # Clean up specific containers by name
     for container_name in "$CREATE_CONTAINER_NAME" "$DESTROY_CONTAINER_NAME"; do
-        if $engine ps -a --format "{{.Names}}" | grep -q "^${container_name}$" 2>/dev/null; then
+        if "$engine" ps -a --format "{{.Names}}" | grep -q "^${container_name}$" 2>/dev/null; then
             log_verbose "Removing container: $container_name"
             # First try to stop the container if it's running
-            $engine stop "$container_name" &>/dev/null || true
+            "$engine" stop "$container_name" &>/dev/null || true
             # Then force remove it
-            $engine rm -f "$container_name" &>/dev/null || true
+            "$engine" rm -f "$container_name" &>/dev/null || true
         fi
     done
 
     # Also clean up any containers that might have been left from previous runs
     # Look for containers with the mapt-create or mapt-destroy pattern
     local old_containers
-    old_containers=$($engine ps -a --format "{{.Names}}" | grep -E "^mapt-(create|destroy)-" 2>/dev/null || true)
+    old_containers=$("$engine" ps -a --format "{{.Names}}" | grep -E "^mapt-(create|destroy)-" 2>/dev/null || true)
 
     if [ -n "$old_containers" ]; then
         log_verbose "Found old MAPT containers, cleaning up..."
         echo "$old_containers" | while read -r container_name; do
             if [ -n "$container_name" ]; then
                 log_verbose "Removing old container: $container_name"
-                $engine stop "$container_name" &>/dev/null || true
-                $engine rm -f "$container_name" &>/dev/null || true
+                "$engine" stop "$container_name" &>/dev/null || true
+                "$engine" rm -f "$container_name" &>/dev/null || true
             fi
         done
     fi
@@ -289,22 +289,16 @@ detect_environment() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -c|--create-only)
+            --create)
                 CREATE_CLUSTER=true
                 DELETE_CLUSTER=false
                 log_verbose "Mode: Create cluster only"
                 shift
                 ;;
-            -d|--delete-only)
+            --delete)
                 CREATE_CLUSTER=false
                 DELETE_CLUSTER=true
                 log_verbose "Mode: Delete cluster only"
-                shift
-                ;;
-            -b|--both)
-                CREATE_CLUSTER=true
-                DELETE_CLUSTER=true
-                log_verbose "Mode: Create and delete cluster"
                 shift
                 ;;
             -h|--help)
@@ -477,7 +471,7 @@ create_cluster() {
     fi
 
     log_info "Starting cluster creation container..."
-    $CONTAINER_ENGINE run -d --name "$CREATE_CONTAINER_NAME" \
+    "$CONTAINER_ENGINE" run -d --name "$CREATE_CONTAINER_NAME" \
         -v "${PWD}:/workspace:z" \
         -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
         -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
@@ -496,7 +490,7 @@ create_cluster() {
     # Wait for creation to complete
     log_info "Waiting for cluster creation to complete..."
     local container_id
-    container_id=$($CONTAINER_ENGINE ps -q --filter "name=$CREATE_CONTAINER_NAME")
+    container_id=$("$CONTAINER_ENGINE" ps -q --filter "name=$CREATE_CONTAINER_NAME")
 
     if [ -z "$container_id" ]; then
         log_error "Create container did not start properly"
@@ -509,20 +503,20 @@ create_cluster() {
         log_info "Container logs will continue in background..."
 
         # Start following logs in background and save to file
-        ($CONTAINER_ENGINE logs -f "$container_id" 2>&1 | tee "$CREATE_LOG_FILE") &
+        ("$CONTAINER_ENGINE" logs -f "$container_id" 2>&1 | tee "$CREATE_LOG_FILE") &
         local logs_pid=$!
 
         # Convert timeout to seconds
         local timeout_seconds=1200
 
         # Wait for container to complete
-        if timeout "$timeout_seconds" $CONTAINER_ENGINE wait "$container_id"; then
+        if timeout "$timeout_seconds" "$CONTAINER_ENGINE" wait "$container_id"; then
             # Stop following logs
             kill $logs_pid 2>/dev/null || true
             wait $logs_pid 2>/dev/null || true
 
             local exit_code
-            exit_code=$($CONTAINER_ENGINE inspect "$container_id" --format '{{.State.ExitCode}}')
+            exit_code=$("$CONTAINER_ENGINE" inspect "$container_id" --format '{{.State.ExitCode}}')
 
             log_info "Container execution completed with exit code: $exit_code"
         else
@@ -531,32 +525,32 @@ create_cluster() {
             wait $logs_pid 2>/dev/null || true
             log_error "Timeout waiting for cluster creation to complete"
             # Clean up container
-            $CONTAINER_ENGINE rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
+            "$CONTAINER_ENGINE" rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
             exit 1
         fi
     else
         # Convert timeout to seconds
         local timeout_seconds=1200
 
-        if timeout "$timeout_seconds" $CONTAINER_ENGINE wait "$container_id"; then
+        if timeout "$timeout_seconds" "$CONTAINER_ENGINE" wait "$container_id"; then
             local exit_code
-            exit_code=$($CONTAINER_ENGINE inspect "$container_id" --format '{{.State.ExitCode}}')
+            exit_code=$("$CONTAINER_ENGINE" inspect "$container_id" --format '{{.State.ExitCode}}')
 
             # Save logs
             log_info "Saving cluster creation logs to $CREATE_LOG_FILE"
-            $CONTAINER_ENGINE logs "$container_id" > "$CREATE_LOG_FILE" 2>&1
+            "$CONTAINER_ENGINE" logs "$container_id" > "$CREATE_LOG_FILE" 2>&1
         else
             log_error "Timeout waiting for cluster creation to complete"
             # Save logs even on timeout
-            $CONTAINER_ENGINE logs "$container_id" > "$CREATE_LOG_FILE" 2>&1
+            "$CONTAINER_ENGINE" logs "$container_id" > "$CREATE_LOG_FILE" 2>&1
             # Clean up container
-            $CONTAINER_ENGINE rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
+            "$CONTAINER_ENGINE" rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
             exit 1
         fi
     fi
 
     local exit_code
-    exit_code=$($CONTAINER_ENGINE inspect "$container_id" --format '{{.State.ExitCode}}')
+    exit_code=$("$CONTAINER_ENGINE" inspect "$container_id" --format '{{.State.ExitCode}}')
 
     if [ "$exit_code" -eq 0 ]; then
         cluster_created=true
@@ -572,13 +566,13 @@ create_cluster() {
         log_error "Cluster creation failed with exit code: $exit_code"
         log_error "Check $CREATE_LOG_FILE for detailed error information"
         # Clean up container
-        $CONTAINER_ENGINE rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
+        "$CONTAINER_ENGINE" rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
         exit 1
     fi
 
     # Clean up the container after successful execution
     log_verbose "Cleaning up creation container: $CREATE_CONTAINER_NAME"
-    $CONTAINER_ENGINE rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
+    "$CONTAINER_ENGINE" rm -f "$CREATE_CONTAINER_NAME" &>/dev/null || true
 }
 
 # Destroy cluster
@@ -591,7 +585,7 @@ destroy_cluster() {
     fi
 
     log_info "Starting cluster destruction container..."
-    $CONTAINER_ENGINE run -d --name "$DESTROY_CONTAINER_NAME" \
+    "$CONTAINER_ENGINE" run -d --name "$DESTROY_CONTAINER_NAME" \
         -v "${PWD}:/workspace:z" \
         -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
         -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
@@ -603,7 +597,7 @@ destroy_cluster() {
     # Wait for destruction to complete
     log_info "Waiting for cluster destruction to complete (timeout: 20m)..."
     local container_id
-    container_id=$($CONTAINER_ENGINE ps -q --filter "name=$DESTROY_CONTAINER_NAME")
+    container_id=$("$CONTAINER_ENGINE" ps -q --filter "name=$DESTROY_CONTAINER_NAME")
 
     if [ -n "$container_id" ]; then
         # Show live logs if verbose mode is enabled
@@ -611,17 +605,17 @@ destroy_cluster() {
             log_info "Showing live destruction logs:"
 
             # Start following logs in background and save to file
-            ($CONTAINER_ENGINE logs -f "$container_id" 2>&1 | tee "$DESTROY_LOG_FILE") &
+            ("$CONTAINER_ENGINE" logs -f "$container_id" 2>&1 | tee "$DESTROY_LOG_FILE") &
             local logs_pid=$!
 
             # Wait for container to complete
-            if timeout 1200 $CONTAINER_ENGINE wait "$container_id"; then
+            if timeout 1200 "$CONTAINER_ENGINE" wait "$container_id"; then
                 # Stop following logs
                 kill $logs_pid 2>/dev/null || true
                 wait $logs_pid 2>/dev/null || true
 
                 local exit_code
-                exit_code=$($CONTAINER_ENGINE inspect "$container_id" --format '{{.State.ExitCode}}')
+                exit_code=$("$CONTAINER_ENGINE" inspect "$container_id" --format '{{.State.ExitCode}}')
 
                 log_info "Destruction container completed with exit code: $exit_code"
             else
@@ -632,23 +626,23 @@ destroy_cluster() {
                 log_warn "Cluster destruction may not have completed"
             fi
         else
-            if timeout 1200 $CONTAINER_ENGINE wait "$container_id"; then
+            if timeout 1200 "$CONTAINER_ENGINE" wait "$container_id"; then
                 local exit_code
-                exit_code=$($CONTAINER_ENGINE inspect "$container_id" --format '{{.State.ExitCode}}')
+                exit_code=$("$CONTAINER_ENGINE" inspect "$container_id" --format '{{.State.ExitCode}}')
 
                 # Save logs
                 log_info "Saving cluster destruction logs to $DESTROY_LOG_FILE"
-                $CONTAINER_ENGINE logs "$container_id" > "$DESTROY_LOG_FILE" 2>&1
+                "$CONTAINER_ENGINE" logs "$container_id" > "$DESTROY_LOG_FILE" 2>&1
             else
                 log_warn "Timeout waiting for cluster destruction to complete"
                 # Save logs even on timeout
-                $CONTAINER_ENGINE logs "$container_id" > "$DESTROY_LOG_FILE" 2>&1
+                "$CONTAINER_ENGINE" logs "$container_id" > "$DESTROY_LOG_FILE" 2>&1
                 log_warn "Cluster destruction may not have completed"
             fi
         fi
 
         local exit_code
-        exit_code=$($CONTAINER_ENGINE inspect "$container_id" --format '{{.State.ExitCode}}')
+        exit_code=$("$CONTAINER_ENGINE" inspect "$container_id" --format '{{.State.ExitCode}}')
 
         if [ "$exit_code" -eq 0 ]; then
             cluster_destroyed=true
@@ -661,7 +655,7 @@ destroy_cluster() {
 
         # Clean up the container after execution
         log_verbose "Cleaning up destruction container: $DESTROY_CONTAINER_NAME"
-        $CONTAINER_ENGINE rm -f "$DESTROY_CONTAINER_NAME" &>/dev/null || true
+        "$CONTAINER_ENGINE" rm -f "$DESTROY_CONTAINER_NAME" &>/dev/null || true
     else
         log_warn "Could not find destroy container. Manual cleanup may be required for project: $CLUSTER_NAME"
     fi
@@ -733,7 +727,7 @@ main() {
     if [ "$DELETE_CLUSTER" = true ]; then
         log_info "✓ Cluster deletion scheduled for cleanup"
     elif [ "$cluster_created" = true ]; then
-        log_info "ℹ Cluster preserved (use '$0 --delete-only' to delete later)"
+        log_info "ℹ Cluster preserved (use '$0 --delete' to delete later)"
     fi
 
     log_info "Total execution time: $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"

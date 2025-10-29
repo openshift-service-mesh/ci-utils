@@ -19,7 +19,6 @@ A standardized, reusable tool for creating and managing OpenShift clusters using
 ### Required Tools
 - **Container Engine**: Podman (recommended) or Docker
 - **AWS CLI**: Required when using S3 backing (CI environments)
-- **Pull Secret**: OpenShift pull secret file for cluster creation
 
 ### Required Credentials
 - **AWS Access Key ID**: For S3 operations and cluster provisioning
@@ -52,11 +51,11 @@ cp /path/to/your/pull-secret.json ./pull-secret.json
 
 ```bash
 # Create cluster only (for development/testing/ci)
-./create_mapt_cluster.sh --create-only --verbose
+./create_mapt_cluster.sh --create --verbose
 
 # Delete existing cluster only
 export CLUSTER_NAME="my-existing-cluster"
-./create_mapt_cluster.sh --delete-only
+./create_mapt_cluster.sh --delete
 
 # Custom cluster configuration
 export CLUSTER_NAME="my-test-cluster"
@@ -85,7 +84,7 @@ export CLUSTER_SPOT=false
 |----------|---------|-------------|
 | `AWS_DEFAULT_REGION` | `us-east-1` | AWS region for resources |
 | `CLUSTER_NAME` | `mapt-cluster-{timestamp}` | Name of the cluster project |
-| `CLUSTER_VERSION` | `4.19.0` | OpenShift version to deploy |
+| `CLUSTER_VERSION` | `4.20.0` | OpenShift version to deploy (full version with patch required, e.g., `4.20.0`) |
 | `CLUSTER_CPUS` | `16` | Number of CPUs for the cluster |
 | `CLUSTER_MEMORY` | `64` | Memory in GB for the cluster |
 | `CLUSTER_SPOT` | `true` | Use spot instances (true/false) |
@@ -102,12 +101,17 @@ export CLUSTER_SPOT=false
 
 | Option | Description |
 |--------|-------------|
-| `-c, --create-only` | Create cluster only (don't delete) |
-| `-d, --delete-only` | Delete cluster only (don't create) |
-| `-b, --both` | Create and delete cluster (default) |
+| `--create` | Create cluster only (don't delete) |
+| `--delete` | Delete cluster only (don't create) |
+| Default (no options) | Create cluster, then delete it after completion |
 | `-h, --help` | Show help message and exit |
 | `-v, --verbose` | Enable verbose logging |
 | `--dry-run` | Show what would be executed without running |
+
+**Note**: The default behavior creates a cluster and then immediately deletes it. This is useful for end-to-end testing of the cluster lifecycle. For typical CI/CD workflows, you would:
+1. Use `--create` to create the cluster
+2. Run your tests or workloads
+3. Use `--delete` to clean up the cluster after tests complete
 
 ## Environment Detection
 
@@ -138,7 +142,7 @@ The script detects CI environments by checking for these variables:
 export AWS_ACCESS_KEY_ID="your_key"
 export AWS_SECRET_ACCESS_KEY="your_secret"
 export CLUSTER_NAME="dev-cluster"
-./create_mapt_cluster.sh --create-only --verbose
+./create_mapt_cluster.sh --create --verbose
 ```
 
 ### CI/CD Pipeline Usage
@@ -156,7 +160,7 @@ export CLUSTER_NAME="dev-cluster"
     PULL_SECRET_FILE: "./pull-secret.json"
   run: |
     echo "${{ secrets.PULL_SECRET_CONTENT }}" > pull-secret.json
-    ./mapt_cluster/create_mapt_cluster.sh --create-only --verbose
+    ./mapt_cluster/create_mapt_cluster.sh --create --verbose
 
 - name: Run tests
   env:
@@ -173,7 +177,7 @@ export CLUSTER_NAME="dev-cluster"
     CI: true
     CLUSTER_NAME: "gh-${{ github.run_id }}"
   run: |
-    ./mapt_cluster/create_mapt_cluster.sh --delete-only
+    ./mapt_cluster/create_mapt_cluster.sh --delete
 ```
 
 ### Custom Configuration Examples
@@ -190,7 +194,7 @@ export CLUSTER_TIMEOUT=90
 export CLUSTER_CPUS=8
 export CLUSTER_MEMORY=32
 export CLUSTER_VERSION="4.18.0"
-./create_mapt_cluster.sh --create-only
+./create_mapt_cluster.sh --create
 
 # Custom tags and S3 configuration
 export CLUSTER_TAGS="project=myproject,team=platform,environment=testing"
@@ -285,12 +289,22 @@ The script creates comprehensive logs for all operations:
 
    # First, try to destroy the cluster (even if creation failed)
    export CLUSTER_NAME="your-failed-cluster-name"
-   ./create_mapt_cluster.sh --delete-only
+   ./create_mapt_cluster.sh --delete
 
    # Only delete S3 bucket AFTER cluster destruction succeeds
    # The script will do this automatically, or you can do it manually:
    aws s3 rb s3://your-bucket-name --force
    ```
+
+**Finding Available OpenShift Versions**: To find available OpenShift versions with patch numbers, you can:
+- Check using the AWS clie the AMI available for your account with the name openshift-local:
+```bash
+aws ec2 describe-images --filters "Name=name,Values=openshift-local-*" --query 'Images[*].[Name]' --output text | sort -V
+openshift-local-4.19.0-arm64
+openshift-local-4.19.0-x86_64
+openshift-local-4.20.0-x86_64-d3cd1dd
+```
+Note: The openshift local team regularly updates these AMIs with the latest patches. It can be more available images that are not being copied to the shared account.
 
 ### Debug Mode
 
