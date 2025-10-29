@@ -101,8 +101,8 @@ export CLUSTER_SPOT=false
 
 | Option | Description |
 |--------|-------------|
-| `--create` | Create cluster only (don't delete) |
-| `--delete` | Delete cluster only (don't create) |
+| `--create` | Create cluster and S3 bucket only (don't delete the cluster or S3 bucket) |
+| `--delete` | Delete cluster and S3 bucket only (don't create anything). Should be used for cleanup |
 | Default (no options) | Create cluster, then delete it after completion |
 | `-h, --help` | Show help message and exit |
 | `-v, --verbose` | Enable verbose logging |
