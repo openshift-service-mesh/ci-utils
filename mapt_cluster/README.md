@@ -91,7 +91,7 @@ export CLUSTER_SPOT=false
 | `CLUSTER_TIMEOUT` | `60` | Timeout for cluster operations in minutes |
 | `PULL_SECRET_FILE` | `./pull-secret.json` | Path to pull secret file |
 | `CLUSTER_TAGS` | Basic tags | Additional tags for AWS resources |
-| `BACKED_URL_TYPE` | Auto-detected | Backing URL type: "s3" or "file" |
+| `BACKEND_URL_TYPE` | Auto-detected | Backing URL type: "s3" or "file" |
 | `S3_BUCKET_PREFIX` | `mapt-cluster` | Prefix for S3 bucket names |
 | `CONTAINER_ENGINE` | `podman` | Container engine: "podman" or "docker" |
 | `MAPT_IMAGE` | `quay.io/redhat-developer/mapt:v0.9.4` | MAPT container image |

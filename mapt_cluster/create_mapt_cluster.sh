@@ -65,7 +65,7 @@ cleanup() {
     cluster_exists=false
     if [ "$cluster_created" = true ] || container_exists "$CREATE_CONTAINER_NAME"; then
         cluster_exists=true
-    elif [ "$BACKED_URL_TYPE" = "s3" ] && [ "$DELETE_CLUSTER" = true ]; then
+    elif [ "$BACKEND_URL_TYPE" = "s3" ] && [ "$DELETE_CLUSTER" = true ]; then
         # For delete-only operations, check if Pulumi state exists in S3
         if aws s3 ls "s3://$S3_BUCKET_NAME/.pulumi/" &>/dev/null; then
             log_verbose "Found Pulumi state files in S3, cluster exists for deletion"
@@ -84,7 +84,7 @@ cleanup() {
 
     # Only clean up S3 bucket if cluster was successfully destroyed
     # This preserves the Pulumi state files needed for cluster cleanup
-    if [ "$BACKED_URL_TYPE" = "s3" ] && [ "$DRY_RUN" = false ]; then
+    if [ "$BACKEND_URL_TYPE" = "s3" ] && [ "$DRY_RUN" = false ]; then
         if [ "$cluster_destroyed" = true ]; then
             log_info "Cluster successfully destroyed, cleaning up S3 bucket: $S3_BUCKET_NAME"
             if aws s3 rb "s3://$S3_BUCKET_NAME" --force 2>/dev/null; then
@@ -182,7 +182,7 @@ OPTIONAL ENVIRONMENT VARIABLES:
     CLUSTER_SPOT           Use spot instances (default: true)
     PULL_SECRET_FILE       Path to pull secret file (default: ./pull-secret.json)
     CLUSTER_TAGS           Additional tags (default: basic tags)
-    BACKED_URL_TYPE        Backing URL type: "s3" or "file" (auto-detected)
+    BACKEND_URL_TYPE        Backing URL type: "s3" or "file" (auto-detected)
     S3_BUCKET_PREFIX       S3 bucket prefix (default: mapt-cluster)
     CONTAINER_ENGINE       Container engine: "podman" or "docker" (default: podman)
     MAPT_IMAGE            MAPT container image (default: latest stable)
@@ -277,11 +277,11 @@ detect_environment() {
         fi
 
         # Set S3 backing for CI
-        BACKED_URL_TYPE="s3"
+        BACKEND_URL_TYPE="s3"
     else
         log_info "Local environment detected"
         IS_CI=false
-        BACKED_URL_TYPE="${BACKED_URL_TYPE:-file}"
+        BACKEND_URL_TYPE="${BACKEND_URL_TYPE:-file}"
     fi
 }
 
@@ -365,7 +365,7 @@ set_defaults() {
     readonly MAPT_IMAGE=${MAPT_IMAGE:-"quay.io/redhat-developer/mapt:v0.9.9"}
 
     # Set backing URL based on environment
-    if [ "$BACKED_URL_TYPE" = "s3" ]; then
+    if [ "$BACKEND_URL_TYPE" = "s3" ]; then
         readonly S3_BUCKET_NAME="${S3_BUCKET_PREFIX}-${CLUSTER_NAME}"
         readonly BACKED_URL="s3://${S3_BUCKET_NAME}"
     else
@@ -399,7 +399,7 @@ set_defaults() {
 
 # Create S3 bucket if needed
 create_s3_bucket() {
-    if [ "$BACKED_URL_TYPE" = "s3" ]; then
+    if [ "$BACKEND_URL_TYPE" = "s3" ]; then
         log_info "Creating S3 bucket: $S3_BUCKET_NAME"
 
         if [ "$DRY_RUN" = true ]; then
@@ -433,7 +433,7 @@ verify_prerequisites() {
     fi
 
     # Check AWS CLI if using S3 backing
-    if [ "$BACKED_URL_TYPE" = "s3" ] && ! command -v aws &> /dev/null; then
+    if [ "$BACKEND_URL_TYPE" = "s3" ] && ! command -v aws &> /dev/null; then
         log_error "AWS CLI not found but S3 backing is enabled. Please install AWS CLI."
         exit 1
     fi
