@@ -16,30 +16,22 @@ A generic tool for sending JUnit XML test results to any Report Portal instance 
 
 ## Usage
 
-### Basic Usage
-
+### Setup
 ```bash
-# Set required environment variables
-export REPORT_PORTAL_HOSTNAME="reportportal.example.com"
-export REPORT_PORTAL_PROJECT="my_project"
-# With this minimal setup, the script will use default values for other parameters
-
-# Run the script
 ./send_report_portal_results.sh
 ```
-
-### Advanced Usage
 
 ```bash
 # Set all environment variables
 export REPORT_PORTAL_HOSTNAME="reportportal.example.com"
 export REPORT_PORTAL_PROJECT="my_project"
+export DATA_ROUTER_URL="mandatory for different networks and stages"
+export TEST_SUITE="integration-tests"
+export TEST_STAGE="staging"
 export TESTRUN_NAME="Integration Tests"
 export TESTRUN_DESCRIPTION="Full integration test suite"
 export TEST_FILE_NAME="integration-results.xml"
 export PRODUCT_VERSION="v2.1.0"
-export TEST_SUITE="integration-tests"
-export TEST_STAGE="staging"
 # Add any extra attributes as a JSON array, this will be added as key/value pairs in Report Portal launch
 export EXTRA_ATTRIBUTES='[{"key": "environment", "value": "staging"}, {"key": "browser", "value": "chrome"}]'
 
@@ -65,6 +57,8 @@ export REPORT_PORTAL_PROJECT="my_project"
 |----------|-------------|---------|
 | `REPORT_PORTAL_HOSTNAME` | Report Portal hostname | `reportportal.example.com` |
 | `REPORT_PORTAL_PROJECT` | Report Portal project name | `my_project` |
+| `DATA_ROUTER_URL` | Drouter URL | `mandatory for different environments` |
+
 
 ### Optional
 
