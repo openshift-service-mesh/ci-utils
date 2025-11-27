@@ -10,6 +10,10 @@ set -o pipefail
 VERBOSE=false
 DRY_RUN=false
 
+# Path to the metadata file used for Data Router submission
+# Stored in /tmp to ensure writability in containerized environments
+METADATA_FILE="/tmp/metadata.json"
+
 # Security function to clear sensitive variables
 cleanup_credentials() {
     unset DATA_ROUTER_USERNAME DATA_ROUTER_PASSWORD 2>/dev/null || true
@@ -39,13 +43,13 @@ REQUIRED ENVIRONMENT VARIABLES:
 OPTIONAL ENVIRONMENT VARIABLES:
     TESTRUN_NAME             Name of the test run (default: "Test Run")
     TESTRUN_DESCRIPTION      Description of the test run (default: "Automated test run")
-    ARTIFACT_DIR             Directory containing test artifacts (default: "/tmp/artifacts")
+    TEST_RESULTS_DIR         Directory containing test result files (default: "/tmp/artifacts")
     TEST_FILE_NAME           Name of the JUnit XML test result file (default: "junit.xml")
     PRODUCT_VERSION          Version of the product being tested (default: "unknown")
     TEST_SUITE               Name of the test suite (default: "automated-tests")
     TEST_REPO                Repository being tested (default: current git repo or "unknown")
     INSTALLATION_METHOD      Method used for installation (default: "unknown")
-    TEST_STAGE               Testing stage (default: "ci")
+    PRODUCT_STAGE            Product stage (default: "upstream")
     EXTRA_ATTRIBUTES         JSON array of additional key/value pairs for metadata
     DATA_ROUTER_URL          Data Router URL (default: "https://datarouter.ccitredhat.com")
     DATA_ROUTER_USERNAME     Data Router username (alternative to /creds-data-router/username file)
@@ -152,35 +156,34 @@ set_defaults() {
     readonly DATA_ROUTER_URL=${DATA_ROUTER_URL:-"https://datarouter.ccitredhat.com"}
     readonly TESTRUN_NAME=${TESTRUN_NAME:-"Test Run"}
     readonly TESTRUN_DESCRIPTION=${TESTRUN_DESCRIPTION:-"Automated test run"}
-    readonly ARTIFACT_DIR=${ARTIFACT_DIR:-"/tmp/artifacts"}
+    readonly TEST_RESULTS_DIR=${TEST_RESULTS_DIR:-"/tmp/artifacts"}
     readonly TEST_FILE_NAME=${TEST_FILE_NAME:-"junit.xml"}
     readonly PRODUCT_VERSION=${PRODUCT_VERSION:-"unknown"}
     readonly TEST_SUITE=${TEST_SUITE:-"automated-tests"}
     readonly TEST_REPO=${TEST_REPO:-$(detect_git_repo)}
     readonly INSTALLATION_METHOD=${INSTALLATION_METHOD:-"unknown"}
-    readonly TEST_STAGE=${TEST_STAGE:-"ci"}
+    readonly PRODUCT_STAGE=${PRODUCT_STAGE:-"upstream"}
     readonly EXTRA_ATTRIBUTES=${EXTRA_ATTRIBUTES:-""}
 
     log_verbose "Configuration loaded:"
     log_verbose "  Report Portal: ${REPORT_PORTAL_HOSTNAME}/${REPORT_PORTAL_PROJECT}"
     log_verbose "  Data Router URL: ${DATA_ROUTER_URL}"
     log_verbose "  Test Run: ${TESTRUN_NAME}"
-    log_verbose "  Test File: ${ARTIFACT_DIR}/${TEST_FILE_NAME}"
+    log_verbose "  Test File: ${TEST_RESULTS_DIR}/${TEST_FILE_NAME}"
     log_verbose "  Product Version: ${PRODUCT_VERSION}"
     log_verbose "  Test Suite: ${TEST_SUITE}"
     log_verbose "  Test Repository: ${TEST_REPO}"
-    log_verbose "  Test Stage: ${TEST_STAGE}"
+    log_verbose "  Product Stage: ${PRODUCT_STAGE}"
 }
 
 # --- Core Functions ---
 
 create_metadata_file() {
-    local metadata_file="metadata.json"
     local starttime=$(date +%s)
 
-    log_verbose "Creating metadata file: ${metadata_file}"
+    log_verbose "Creating metadata file: ${METADATA_FILE}"
 
-    cat << EOF > "${metadata_file}"
+    cat << EOF > "${METADATA_FILE}"
 {
     "targets": {
         "reportportal": {
@@ -204,8 +207,8 @@ create_metadata_file() {
                             "value": "${PRODUCT_VERSION}"
                         },
                         {
-                            "key": "test_stage",
-                            "value": "${TEST_STAGE}"
+                            "key": "product_stage",
+                            "value": "${PRODUCT_STAGE}"
                         },
                         {
                             "key": "test_suite",
@@ -231,40 +234,40 @@ EOF
     if [[ -n "${EXTRA_ATTRIBUTES}" ]]; then
         log_verbose "Adding extra attributes to metadata"
 
-        local temp_file="metadata_tmp.json"
-        if ! jq --argjson extra "${EXTRA_ATTRIBUTES}" '.targets.reportportal.processing.launch.attributes += $extra' "${metadata_file}" > "${temp_file}"; then
+        local temp_file="/tmp/metadata_tmp.json"
+        if ! jq --argjson extra "${EXTRA_ATTRIBUTES}" '.targets.reportportal.processing.launch.attributes += $extra' "${METADATA_FILE}" > "${temp_file}"; then
             log_error "Failed to merge extra attributes. Please check EXTRA_ATTRIBUTES format."
             log_error "Expected format: '[{\"key\": \"k1\", \"value\": \"v1\"}, {\"key\": \"k2\", \"value\": \"v2\"}]'"
-            rm -f "${temp_file}" "${metadata_file}"
+            rm -f "${temp_file}" "${METADATA_FILE}"
             exit 1
         fi
-        mv "${temp_file}" "${metadata_file}"
+        mv "${temp_file}" "${METADATA_FILE}"
     fi
 
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Metadata file content:"
-        cat "${metadata_file}"
+        cat "${METADATA_FILE}"
     else
         log_verbose "Metadata file created successfully"
     fi
 }
 
 verify_test_file() {
-    local test_file_path="${ARTIFACT_DIR}/${TEST_FILE_NAME}"
+    local test_file_path="${TEST_RESULTS_DIR}/${TEST_FILE_NAME}"
 
     log_verbose "Verifying test results file: ${test_file_path}"
 
-    # Check if artifact directory exists
-    if [[ ! -d "${ARTIFACT_DIR}" ]]; then
-        log_error "Artifact directory '${ARTIFACT_DIR}' does not exist."
+    # Check if test results directory exists
+    if [[ ! -d "${TEST_RESULTS_DIR}" ]]; then
+        log_error "Test results directory '${TEST_RESULTS_DIR}' does not exist."
         exit 1
     fi
 
     # Verify test results file exists and is readable
     if [[ ! -f "${test_file_path}" ]]; then
         log_error "Test results file '${test_file_path}' not found."
-        log_info "Available files in ${ARTIFACT_DIR}:"
-        ls -la "${ARTIFACT_DIR}" 2>/dev/null || log_error "Could not list artifact directory contents"
+        log_info "Available files in ${TEST_RESULTS_DIR}:"
+        ls -la "${TEST_RESULTS_DIR}" 2>/dev/null || log_error "Could not list test results directory contents"
         exit 1
     fi
 
@@ -325,8 +328,7 @@ verify_credentials() {
 }
 
 send_results() {
-    local metadata_file="metadata.json"
-    local test_file_path="${ARTIFACT_DIR}/${TEST_FILE_NAME}"
+    local test_file_path="${TEST_RESULTS_DIR}/${TEST_FILE_NAME}"
 
     log_info "Preparing to send test results from '${test_file_path}'"
 
@@ -339,40 +341,64 @@ send_results() {
 
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "DRY RUN: Would send the following:"
-        log_info "  Metadata file: ${metadata_file}"
+        log_info "  Metadata file: ${METADATA_FILE}"
         log_info "  Test results: ${test_file_path}"
         log_info "  Data Router URL: ${DATA_ROUTER_URL}"
-        rm -f "${metadata_file}"
+        rm -f "${METADATA_FILE}"
         return 0
     fi
 
     # Check if droute command is available
     if ! command -v droute &> /dev/null; then
         log_error "droute command not found. Please ensure it's installed and available in PATH."
-        rm -f "${metadata_file}"
+        rm -f "${METADATA_FILE}"
         exit 1
     fi
 
     log_info "Sending test results to Report Portal via Data Router..."
-    log_verbose "Command: droute send --metadata ${metadata_file} --results ${test_file_path} --url ${DATA_ROUTER_URL} [credentials passed via environment]"
+    log_verbose "Command: droute send --metadata ${METADATA_FILE} --results ${test_file_path} --url ${DATA_ROUTER_URL} [credentials passed via environment]"
 
     # Credentials are already exported as environment variables, which is secure
     # droute will read DATA_ROUTER_USERNAME and DATA_ROUTER_PASSWORD from the environment
-    if ! droute send \
-        --metadata "${metadata_file}" \
-        --results "${test_file_path}" \
-        --username "${DATA_ROUTER_USERNAME}" \
-        --password "${DATA_ROUTER_PASSWORD}" \
-        --url "${DATA_ROUTER_URL}" \
-        ${VERBOSE:+--verbose}; then
-        log_error "Failed to send results to Data Router"
-        rm -f "${metadata_file}"
+    local max_retries=10
+    local retry_delay=1
+    local attempt=1
+    local success=false
+
+    while [[ ${attempt} -le ${max_retries} ]]; do
+        if [[ ${attempt} -gt 1 ]]; then
+            log_info "Retry attempt ${attempt}/${max_retries}..."
+        fi
+
+        if droute send \
+            --metadata "${METADATA_FILE}" \
+            --results "${test_file_path}" \
+            --username "${DATA_ROUTER_USERNAME}" \
+            --password "${DATA_ROUTER_PASSWORD}" \
+            --url "${DATA_ROUTER_URL}" \
+            --wait=10 \
+            ${VERBOSE:+--verbose}; then
+            success=true
+            break
+        fi
+
+        if [[ ${attempt} -lt ${max_retries} ]]; then
+            log_verbose "Attempt ${attempt} failed, waiting ${retry_delay} second(s) before retry..."
+            sleep ${retry_delay}
+        fi
+
+        ((attempt++))
+    done
+
+    if [[ "${success}" != "true" ]]; then
+        log_error "Failed to send results to Data Router after ${max_retries} attempts"
+        rm -f "${METADATA_FILE}"
         exit 1
     fi
 
     log_info "Results sent successfully to Report Portal"
     log_info "Cleaning up metadata file..."
-    rm -f "${metadata_file}"
+    rm -f "${METADATA_FILE}"
 
     # Security: Clear credentials from environment after use
     cleanup_credentials

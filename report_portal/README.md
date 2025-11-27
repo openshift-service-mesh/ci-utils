@@ -32,6 +32,8 @@ export TESTRUN_NAME="Integration Tests"
 export TESTRUN_DESCRIPTION="Full integration test suite"
 export TEST_FILE_NAME="integration-results.xml"
 export PRODUCT_VERSION="v2.1.0"
+export TEST_SUITE="integration-tests"
+export PRODUCT_STAGE="downstream"
 # Add any extra attributes as a JSON array, this will be added as key/value pairs in Report Portal launch
 export EXTRA_ATTRIBUTES='[{"key": "environment", "value": "staging"}, {"key": "browser", "value": "chrome"}]'
 
@@ -66,13 +68,13 @@ export REPORT_PORTAL_PROJECT="my_project"
 |----------|---------|-------------|
 | `TESTRUN_NAME` | `"Test Run"` | Name of the test run |
 | `TESTRUN_DESCRIPTION` | `"Automated test run"` | Description of the test run |
-| `ARTIFACT_DIR` | `"/tmp/artifacts"` | Directory containing test artifacts |
+| `TEST_RESULTS_DIR` | `"/tmp/artifacts"` | Directory containing test result files |
 | `TEST_FILE_NAME` | `"junit.xml"` | Name of the JUnit XML test result file |
 | `PRODUCT_VERSION` | `"unknown"` | Version of the product being tested |
 | `TEST_SUITE` | `"automated-tests"` | Name of the test suite |
 | `TEST_REPO` | Current git repo or `"unknown"` | Repository being tested |
 | `INSTALLATION_METHOD` | `"unknown"` | Method used for installation or deploy for OSSM. For example: sail-operator, OSSM OLM, Kiali, Istio upstream, Istio converter |
-| `TEST_STAGE` | `"ci"` | Testing stage (e.g., ci, staging, production) |
+| `PRODUCT_STAGE` | `"upstream"` | Product stage (e.g., upstream, midstream, downstream) |
 | `DATA_ROUTER_URL` | `"https://datarouter.ccitredhat.com"` | Data Router URL |
 | `DATA_ROUTER_USERNAME` | `""` | Data Router username (alternative to file-based credentials) |
 | `DATA_ROUTER_PASSWORD` | `""` | Data Router password/token (alternative to file-based credentials) |
@@ -155,7 +157,7 @@ report_to_portal:
     - export REPORT_PORTAL_PROJECT="my-product"
     - export TESTRUN_NAME="Pipeline ${CI_PIPELINE_ID}"
     - export PRODUCT_VERSION="${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}"
-    - export TEST_STAGE="ci"
+    - export PRODUCT_STAGE="downstream"
     - export DATA_ROUTER_USERNAME="${DATA_ROUTER_USER}"  # From CI variables
     - export DATA_ROUTER_PASSWORD="${DATA_ROUTER_TOKEN}"  # From CI variables
     - ./report_portal/send_report_portal_results.sh --verbose
@@ -174,7 +176,7 @@ report_to_portal:
     REPORT_PORTAL_PROJECT: my-product
     TESTRUN_NAME: "GitHub Action Run ${{ github.run_number }}"
     PRODUCT_VERSION: ${{ github.ref_name }}
-    TEST_STAGE: ci
+    PRODUCT_STAGE: upstream
     DATA_ROUTER_USERNAME: ${{ secrets.DATA_ROUTER_USERNAME }}
     DATA_ROUTER_PASSWORD: ${{ secrets.DATA_ROUTER_PASSWORD }}
   run: |
@@ -187,11 +189,11 @@ report_to_portal:
 # For local testing with custom test results and environment variable credentials
 export REPORT_PORTAL_HOSTNAME="reportportal.example.com"
 export REPORT_PORTAL_PROJECT="my_project"
-export ARTIFACT_DIR="./test-results"
+export TEST_RESULTS_DIR="./test-results"
 export TEST_FILE_NAME="my-tests.xml"
 export TESTRUN_NAME="Local Development Test"
 export PRODUCT_VERSION="dev"
-export TEST_STAGE="local"
+export PRODUCT_STAGE="upstream"
 export DATA_ROUTER_USERNAME="your_username"
 export DATA_ROUTER_PASSWORD="your_token"
 
