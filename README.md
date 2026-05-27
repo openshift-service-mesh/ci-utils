@@ -27,6 +27,7 @@ This repository is a **Claude Code skills marketplace**. Team members can instal
 Available plugins:
 - **`ossm-ci`** — CI utilities: release confidence scoring, E2E test generation, AWS resource inventory, and Prow CI metrics
 - **`code-reviewer`** — Multi-phase code review with auto-maintained project conventions
+- **`codebase-scribe`** — Generate, enrich, and maintain agentic development documentation for any codebase
 
 ### Installation
 
@@ -45,6 +46,7 @@ This registers the repo as a marketplace using the `name` field from its `.claud
 ```
 /plugin install ossm-ci@ci-utils
 /plugin install code-reviewer@ci-utils
+/plugin install codebase-scribe@ci-utils
 ```
 
 #### Step 3: Reload plugins
@@ -128,6 +130,24 @@ Designed for GitHub Actions workflows. See [`plugins/code-reviewer/README.md`](p
 **Requires:** Claude Code CLI, `ANTHROPIC_API_KEY`, `gh` CLI authenticated with PR read/write permissions.
 
 Also available for **Cursor** via install script. See [`plugins/code-reviewer/README.md`](plugins/code-reviewer/README.md) for full details, Cursor installation, and CI workflow examples.
+
+---
+
+### Commands — codebase-scribe
+
+#### `/codebase-scribe`
+Generate, enrich, and maintain agentic development documentation. Auto-detects mode based on documentation state: **seed** (no docs — scans repo, proposes topics, creates stubs), **draft** (stubs exist — reads source code, fills content, extracts claims), or **maintain** (docs current — detects drift, auto-fixes references, flags changes for review).
+
+Supports context and focus arguments:
+```
+/codebase-scribe                                    # Auto-detect mode
+/codebase-scribe "we migrated from Webpack to Vite" # Context-biased topic selection
+/codebase-scribe focus:"auth and RBAC system"       # SME-directed deep documentation
+```
+
+Every documentation change goes through an automated review gate that verifies content against source code before finalizing.
+
+See [`plugins/codebase-scribe/README.md`](plugins/codebase-scribe/README.md) for configuration, output structure, and branching strategies.
 
 ---
 
@@ -248,26 +268,39 @@ plugins/
 │       └── generate-e2e-tests/
 │           ├── SKILL.md                          # Full skill implementation
 │           └── documentation-e2e-generator.yaml  # Config template
-└── code-reviewer/
-    ├── commands/         # Slash command definitions
-    │   ├── ci-review.md  # Autonomous CI pipeline
-    │   ├── review.md     # Interactive review
-    │   └── setup.md      # Interactive project onboarding
-    ├── agents/           # Review subagent prompts
-    │   ├── adversarial-reviewer.md
-    │   ├── style-reviewer.md
-    │   └── testing-reviewer.md
-    ├── skills/           # Orchestration and phase skills
-    │   ├── triage/
-    │   ├── consolidation/
-    │   ├── doc-update/
-    │   ├── headless-setup/  # Non-interactive setup for CI
-    │   ├── adversarial-review/
-    │   ├── style-review/
-    │   └── testing-review/
-    ├── templates/        # Brief and report templates
-    ├── examples/         # Example project config
-    └── install-cursor.sh # Cursor IDE install script
+├── code-reviewer/
+│   ├── commands/         # Slash command definitions
+│   │   ├── ci-review.md  # Autonomous CI pipeline
+│   │   ├── review.md     # Interactive review
+│   │   └── setup.md      # Interactive project onboarding
+│   ├── agents/           # Review subagent prompts
+│   │   ├── adversarial-reviewer.md
+│   │   ├── style-reviewer.md
+│   │   └── testing-reviewer.md
+│   ├── skills/           # Orchestration and phase skills
+│   │   ├── triage/
+│   │   ├── consolidation/
+│   │   ├── doc-update/
+│   │   ├── headless-setup/  # Non-interactive setup for CI
+│   │   ├── adversarial-review/
+│   │   ├── style-review/
+│   │   └── testing-review/
+│   ├── templates/        # Brief and report templates
+│   ├── examples/         # Example project config
+│   └── install-cursor.sh # Cursor IDE install script
+└── codebase-scribe/
+    ├── commands/
+    │   └── codebase-scribe.md  # Main orchestrator command
+    ├── hooks/
+    │   ├── hooks.json          # PostToolUse doc validation
+    │   └── doc-validate.sh
+    └── skills/
+        ├── scribe-discover/    # Stub creator for approved topics
+        ├── scribe-draft/       # Source code reader and content generator
+        ├── scribe-maintain/    # Drift detection and auto-fix
+        ├── scribe-review/      # Two-pass documentation verification
+        └── prompts/
+            └── review-adversarial.md
 ```
 
 ---

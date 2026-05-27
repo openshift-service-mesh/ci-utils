@@ -1,0 +1,17 @@
+{
+  "description": "Codebase-scribe lifecycle hooks: doc structure validation",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/doc-validate.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

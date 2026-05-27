@@ -15,6 +15,12 @@
       "source": "./plugins/code-reviewer",
       "description": "Multi-phase code review with auto-maintained project conventions",
       "version": "0.3.0"
+    },
+    {
+      "name": "codebase-scribe",
+      "source": "./plugins/codebase-scribe",
+      "description": "Generate, enrich, and maintain agentic development documentation for any codebase",
+      "version": "1.2.6"
     }
   ]
 }
