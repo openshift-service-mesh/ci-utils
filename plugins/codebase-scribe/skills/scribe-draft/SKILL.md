@@ -402,22 +402,43 @@ If during analysis you discover the topic structure was wrong (e.g., a `services
 
 ## Standard Files
 
-After all topics are processed and STATUS.md is regenerated, check that the repo's four required standard files exist and have substantive content. Run this block once per draft invocation, not per topic.
+After all topics are processed and STATUS.md is regenerated, check that the repo's required standard files exist and have substantive content. Run this block once per draft invocation, not per topic.
 
 ### Step A: Classify each standard file
 
-For each of `README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md` at the repo root (AGENTS.md is already managed by the orchestrator — skip it here):
+**Upstream detection (run once before classification):**
+
+```
+Run: git remote -v  → look for a remote named "upstream"; record its URL
+Check go.mod (if already read during seed) → if the module path org differs from this repo's remote org, record the upstream project name
+Scan README (already read) → extract any "upstream" project name or URL mentions
+Record: upstream_detected = true/false, upstream_url = <URL or null>, upstream_name = <name or null>
+```
+
+For each of `README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, `docs/upstream.md` at the repo root (or `docs/` for upstream.md) — AGENTS.md is already managed by the orchestrator, skip it here:
 
 1. Check if the file exists.
 2. If it exists, read it and count its lines.
-3. Classify:
-   - **Missing** — file does not exist.
-   - **Thin** — exists but fewer than 30 lines, OR passes the line threshold but lacks project-specific detail: no commands, no links, no named components — only a title, generic prose, or placeholder text (e.g., "TODO", "Coming soon", a single sentence, boilerplate unchanged from a template).
-   - **Substantive** — exists with ≥ 30 lines AND contains at least one concrete signal of project-specific content (a command, a link, a named file or component, a real description beyond a single sentence). **Skip entirely — no prompt, no changes.**
+3. Classify using the rules below:
+
+**README.md / CONTRIBUTING.md / ARCHITECTURE.md:**
+- **Missing** — file does not exist.
+- **Thin** — exists but fewer than 30 lines, OR passes the line threshold but lacks project-specific detail: no commands, no links, no named components — only a title, generic prose, or placeholder text (e.g., "TODO", "Coming soon", a single sentence, boilerplate unchanged from a template).
+- **Substantive** — exists with ≥ 30 lines AND contains at least one concrete signal of project-specific content (a command, a link, a named file or component, a real description beyond a single sentence). **Skip entirely — no prompt, no changes.**
+
+**CLAUDE.md / GEMINI.md:**
+- **Missing** — file does not exist.
+- **Thin** — exists but contains no reference to `AGENTS.md` (empty, just a title, or stale content unrelated to this repo).
+- **Substantive** — exists and contains a reference to `AGENTS.md` (the redirect is working). **Skip entirely — no prompt, no changes.**
+
+**docs/upstream.md:**
+- **Missing** — file does not exist.
+- **Thin** — exists but fewer than 20 lines or contains only placeholder text with no concrete signals.
+- **Substantive** — exists with ≥ 20 lines AND at least one concrete signal (a URL, a repo name, a sync command). **Skip generation — but still check ARCHITECTURE.md link (see Step C).**
 
 ### Step B: Ask the user for each missing or thin file
 
-For each file classified as missing or thin, ask via AskUserQuestion **one at a time, sequentially** (do not batch). Prompt order: README.md → CONTRIBUTING.md → ARCHITECTURE.md.
+For each file classified as missing or thin, ask via AskUserQuestion **one at a time, sequentially** (do not batch). Prompt order: README.md → CONTRIBUTING.md → ARCHITECTURE.md → CLAUDE.md → GEMINI.md → docs/upstream.md.
 
 Question: `"README.md is [missing / thin (~N lines)]. Should I generate it?"`
 
@@ -426,6 +447,10 @@ Options:
 2. `"No — skip README.md"` — description: "Leave this file as-is."
 
 Wait for each answer before asking about the next file. If the user selects "Yes", generate and write the file (Step C). If "No", skip and move on.
+
+For `docs/upstream.md`, tailor the question text based on detection results:
+- **Upstream detected:** `"docs/upstream.md is [missing / thin]. I found an upstream relationship (<upstream_url>). Should I generate it?"`
+- **No upstream detected:** `"docs/upstream.md is [missing / thin]. I did not detect an upstream relationship for this repo. Does this repo have an upstream project to document?"`
 
 ### Step C: Generate each approved file
 
@@ -517,7 +542,82 @@ Rules for ARCHITECTURE.md:
 - Pull each TL;DR from the topic file's blockquote (first line after `#` heading). If the topic is still a stub, use its description instead.
 - If no topic files exist yet, create the file with placeholder links (`docs/agents/architecture.md`) — they will become valid after drafting completes.
 - **Never write prose architecture content in this file.** All substantive content lives in `docs/agents/`.
-- Target < 30 lines total.
+- If `docs/upstream.md` exists (Substantive) or was just generated, include a link to it in the `## Documentation Index` section: `- [Working with Upstream](docs/upstream.md) — upstream contribution workflow, sync process, and conventions alignment`
+- Target < 40 lines total.
+
+---
+
+**CLAUDE.md**
+
+```markdown
+# Claude Code Instructions
+
+See [AGENTS.md](AGENTS.md) for project identity, architecture overview, build commands, and conventions.
+
+For detailed topic documentation, see [docs/agents/](docs/agents/).
+```
+
+Rules:
+- Intentionally minimal — AGENTS.md is the source of truth, no duplication
+- Target: 4–6 lines
+
+---
+
+**GEMINI.md**
+
+```markdown
+# Gemini Instructions
+
+See [AGENTS.md](AGENTS.md) for project identity, architecture overview, build commands, and conventions.
+
+For detailed topic documentation, see [docs/agents/](docs/agents/).
+```
+
+Rules: identical to CLAUDE.md
+
+---
+
+**docs/upstream.md**
+
+Template — populate from upstream detection results; use N/A placeholders where nothing was found:
+
+```markdown
+# Working with Upstream
+
+## Upstream Project
+
+- **Project:** <detected name or N/A>
+- **Repository:** <detected URL or N/A>
+- **Relationship:** <fork | dependency | N/A>
+
+## Contribution Workflow
+
+<How changes flow between this repo and upstream. For forks: describe the downstream → midstream → upstream PR chain. For N/A: leave placeholder.>
+
+## Sync Process
+
+<How upstream changes are pulled in: frequency, tooling, who owns the sync. Or N/A.>
+
+## Coding Conventions Alignment
+
+<Where this repo's conventions diverge from upstream, and why. What to watch for when porting changes. Or N/A.>
+
+## PR Process for Upstream Contributions
+
+1. <Step 1>
+2. <Reference the upstream PR in the downstream PR description>
+3. <Any upstream CI or review requirements>
+
+## Upstream testing coverage
+
+<Does upstream have tests? What do they cover? How does that affect our testing strategy? Or N/A.>
+```
+
+Rules:
+- `docs/` already exists (scribe creates `docs/agents/` earlier in the session) — write directly to `docs/upstream.md`
+- Populate from upstream detection results (upstream_url, upstream_name); use N/A where nothing was found
+- After writing, check whether `ARCHITECTURE.md` already links to `docs/upstream.md`. If not, append the link to its `## Documentation Index` section
+- Target: 30–60 lines
 
 ### Step D: Record outcome
 
