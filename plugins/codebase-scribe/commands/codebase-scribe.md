@@ -1,6 +1,6 @@
 ---
 description: Generate, enrich, and maintain agentic development documentation. Run with no args for auto-mode, or use focus:"description" for SME-directed documentation.
-argument-hint: ["context" | focus:"area description"]
+argument-hint: '["context" | focus:"area description"]'
 ---
 
 # Codebase Scribe
@@ -11,7 +11,7 @@ You are the Codebase Scribe — an agent that generates, enriches, and maintains
 
 Handle every error gracefully — warn and continue with defaults:
 1. **Malformed YAML frontmatter** — treat as stub, warn user
-2. **Missing or invalid .scribe.yml** — this file is optional. If missing or invalid, silently fall back to defaults: `output.docs_dir: docs/agents`, `output.agents_md: AGENTS.md`, `branching_strategy: main-only`, `budgets.files_per_topic: 30`, `budgets.files_per_session: 150`, `budgets.topics_per_run: 3`, `drift.sensitivity: medium`, `drift.decision_lines_threshold: 5`, `review.enabled: true`, `review.diff_threshold: 20`, `review.auto_trigger: [new_draft, major_rewrite, claim_change, section_change, large_diff]`
+2. **Missing or invalid .scribe.yml** — this file is optional. If missing or invalid, silently fall back to defaults: `output.docs_dir: docs/agents`, `output.agents_md: AGENTS.md`, `branching_strategy: main-only`, `budgets.files_per_topic: 30`, `budgets.files_per_session: 150`, `budgets.topics_per_run: 3`, `drift.sensitivity: medium`, `drift.decision_lines_threshold: 5`, `review.enabled: true`, `review.diff_threshold: 20`, `review.auto_trigger: [new_draft, major_rewrite, claim_change, section_change, large_diff]`, `agents_md_policy: auto`
 3. **Corrupt .claims.yml** — start with empty claims, warn
 4. **Git unavailable / shallow clone** — skip git-dependent features, warn
 5. **Detached HEAD** — fall back to `main-only` behavior
@@ -45,7 +45,7 @@ Read `.scribe.yml` `branching_strategy` (default `main-only`). Detect current br
 When docs_dir exists but AGENTS.md is missing, generate a minimal hub:
 1. Read all topic files in docs_dir and extract their titles and TL;DR blockquotes
 2. Read the repo's README for project identity (name, description)
-3. Write AGENTS.md with: project name heading, one-line description, "## Documentation" section with links to each topic file (title + TL;DR as description)
+3. Write AGENTS.md with `<!-- scribe:managed -->` as the first line, followed by: project name heading, one-line description, "## Documentation" section with links to each topic file (title + TL;DR as description)
 
 ### Step 2: Topic Discovery and Approval (Seed / Migration only)
 
@@ -384,17 +384,84 @@ Write `.scribe/session.json`: version `1.0`, branch, `last_active_sha`, `last_ac
 
 ### Step 12: AGENTS.md hub management
 
-**Check every run.** If all topics are `complete` AND AGENTS.md doesn't link to `docs/agents/` yet:
-1. Ask user: "All topics drafted. Replace AGENTS.md with a clean hub? Original saved as AGENTS.md.backup."
-2. If approved: rename to `.backup`, write clean hub (Project Identity, Quick Reference, Architecture at a Glance, Documentation links, Conventions). In the "Architecture at a Glance" section include a line: `> For the full architecture index, see [ARCHITECTURE.md](ARCHITECTURE.md).`
+**Runs every time Step 12 is reached**, regardless of topic completion status or whether there are new links to append.
 
-For seed mode (no existing AGENTS.md): discover already created the hub. Append links for newly drafted topics.
+#### 12a: Check policy precedence
 
-For draft/maintain: append new topic links only.
+Read `agents_md_policy` from `.scribe.yml` (default: `auto`).
+
+- If `none` → skip Step 12 entirely. No creation, modification, prompts, or reminders.
+- If `manual` → do not modify AGENTS.md regardless of marker presence. If AGENTS.md does not exist, go to 12b. Otherwise, check for new topics: if a topic file exists in the configured `docs_dir` with no corresponding link in AGENTS.md, print: "Reminder: You're managing AGENTS.md manually. There are new topic files in `<docs_dir>` not yet linked." Then skip the rest of Step 12.
+- If `auto` → continue to 12c.
+
+**Link matching:** A "link to a topic file" is any markdown link `[...](path)` or reference-style link `[...]: path` where `path`, after normalizing a leading `./`, starts with the configured `docs_dir` value.
+
+#### 12b: Manual policy with deleted file
+
+This substep only runs when `agents_md_policy: manual` and AGENTS.md does not exist.
+
+Use AskUserQuestion:
+
+> "Previously you chose to manage AGENTS.md manually, but the file has been deleted. What should I do?"
+
+Options:
+1. "Create a new scribe-managed hub" — Create hub with `<!-- scribe:managed -->` marker using the discover skill's hub template (Project Identity, Quick Reference, Architecture at a Glance, Documentation links, Conventions). Reset `agents_md_policy` to `auto` in `.scribe.yml`.
+2. "Leave it deleted" — Set `agents_md_policy: none` in `.scribe.yml`. No file created, no prompts on future runs.
+
+After the user answers, Step 12 is done for this run.
+
+#### 12c: Marker detection (policy is `auto`)
+
+Read AGENTS.md. Determine its state:
+
+**Detection:** Search the entire file content for the literal string `<!-- scribe:managed`. Position within the file does not matter. If found, check for `<!-- scribe:managed:append-only -->` to distinguish variants.
+
+| AGENTS.md state | Route |
+|-----------------|-------|
+| Does not exist | Create new hub with `<!-- scribe:managed -->` marker using the discover skill's hub template. Append links for any existing topic files. Done. |
+| Exists, contains `<!-- scribe:managed:append-only -->` | Go to 12d (append-only mode). |
+| Exists, contains `<!-- scribe:managed -->` (without `:append-only`) | Go to 12d (full management mode). |
+| Exists, no marker | Go to 12e (ownership prompt). |
+
+#### 12d: Scribe-managed file — append topic links
+
+For files with either marker variant, append links for any topic files in `docs_dir` that are not already linked.
+
+**For `append-only` variant:** Only modify within the `## Documentation` section:
+1. Find the heading: case-insensitive match for a line starting with `## Documentation` (with optional trailing whitespace).
+2. Section end: the next `##`-level heading, or end-of-file, whichever comes first.
+3. If no matching heading exists, create `## Documentation` at the end of the file.
+4. Append new topic links within these boundaries only.
+
+**For full management variant:** Append new topic links in the Documentation section (or create one if missing).
+
+#### 12e: Ownership prompt (non-marker AGENTS.md)
+
+**Pre-marker migration heuristic:** Check if AGENTS.md contains links to topic files in the configured `docs_dir` (using the link matching rules from 12a). If docs_dir links are found, use the migration prompt framing. Otherwise use the standard prompt framing.
+
+Use AskUserQuestion:
+
+**Standard prompt** (no docs_dir links detected):
+> "I found an existing AGENTS.md that wasn't created by the scribe. How should I handle it?"
+
+**Migration prompt** (docs_dir links detected):
+> "This AGENTS.md appears to have been previously generated by the scribe (it links to topic files). How should I handle it?"
+
+Options:
+1. **"Replace with a scribe hub"** — Check if `AGENTS.md.bak` exists. If it does, use AskUserQuestion:
+   - "Overwrite existing backup"
+   - "Keep both (save as AGENTS.md.bak.N)" — N starts at 1; existing `.bak` stays, new backup is `.bak.1`, `.bak.2`, etc.
+   - "Cancel replacement" — Step 12 ends with no action. The ownership prompt re-triggers next run.
+
+   If not cancelled: rename current AGENTS.md to the backup name, write a new hub with `<!-- scribe:managed -->` marker using the discover skill's hub template, populate with topic links.
+
+2. **"Append topic links to the existing file" (Recommended for migration prompt)** — Keep all existing content. Find or create `## Documentation` section (case-insensitive match). Add `<!-- scribe:managed:append-only -->` marker just above the `## Documentation` heading. Append topic file links within the section. If `docs_dir` contains no topic files, create an empty `## Documentation` section (it fills on subsequent runs).
+
+3. **"Leave it alone"** — Do not modify AGENTS.md. Record `agents_md_policy: manual` in `.scribe.yml` (create the file if needed with only this key). Future runs will print a reminder when new topics are discovered, not re-prompt.
 
 ### Step 13: Summary
 
-Print: mode, branch, topics worked, budget used, scores table, contradictions count, standard files status (created / updated / skipped for README.md, CONTRIBUTING.md, ARCHITECTURE.md), suggested next action.
+Print: mode, branch, topics worked, budget used, scores table, contradictions count. If all topics are `complete`, also print: "All topics are complete." Then print: standard files status (created / updated / skipped for README.md, CONTRIBUTING.md, ARCHITECTURE.md), suggested next action.
 
 Suggested next actions by mode:
 - After **seed/discover**: "Run `/codebase-scribe` again to draft content for the stubs."

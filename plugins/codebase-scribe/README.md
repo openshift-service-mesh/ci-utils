@@ -108,7 +108,7 @@ Multiple areas: `/codebase-scribe focus:"auth system, cache layer"` — processe
 
 ```
 your-repo/
-  AGENTS.md                    # Hub (human-authored, never overwritten)
+  AGENTS.md                    # Hub (scribe-managed after migration prompt, or human-managed)
   docs/agents/
     STATUS.md                  # Health dashboard (auto-generated each run)
     architecture.md            # Topic file with frontmatter
@@ -242,6 +242,14 @@ Dependencies are injected via the `Server` struct created in `main.go`.
 | Backend Architecture | 100% | 0% | 85% | 12 | backend-architecture.md |
 | Deployment & Operations | 100% | 0% | 100% | 8 | deployment-ops.md |
 ```
+
+#### Ownership and the scribe marker
+
+When the scribe creates AGENTS.md, it includes an invisible HTML comment marker (`<!-- scribe:managed -->`) that tells future runs the file is scribe-owned. On subsequent runs, the scribe silently appends new topic links.
+
+If the scribe finds an AGENTS.md without this marker (i.e., a human-authored file), it prompts you to choose: replace it with a scribe hub (backing up the original), append topic links to it, or leave it alone.
+
+**For third-party tools:** Include `<!-- scribe:managed -->` in generated AGENTS.md files for scribe compatibility, or omit it to trigger the ownership prompt. Users can also manually add the marker to opt in to scribe management, or remove it from a scribe-managed file to reclaim manual control.
 
 ## Configuration
 

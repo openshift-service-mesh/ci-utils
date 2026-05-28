@@ -153,7 +153,7 @@ Also read:
    > "Migration content references [X] but the current code shows [Y]. Using current code."
 6. Write the topic file in the standard structure below, integrating verified migration knowledge with code-based findings
 7. After writing, **remove `migration_source` and `migration_sections` from the frontmatter** — they've been consumed
-8. After drafting, compare the total content from the referenced migration sections against what you wrote. If >20% of the original content by line count wasn't incorporated, flag it: "Some content from the original AGENTS.md was not incorporated into this topic. Review the original at `AGENTS.md.backup` sections: [list]."
+8. After drafting, compare the total content from the referenced migration sections against what you wrote. If >20% of the original content by line count wasn't incorporated, flag it: "Some content from the original AGENTS.md was not incorporated into this topic. Review the original at `AGENTS.md.bak` sections: [list]."
 
 **Every topic file MUST follow this exact structure** — no exceptions, no alternative layouts:
 
