@@ -72,4 +72,4 @@ scribe:
 
 Create `docs/agents/STATUS.md` showing all topics as stubs with 0% scores.
 
-If no AGENTS.md exists, create a hub with: Project Identity, Quick Reference, Architecture at a Glance, Documentation links, Conventions placeholder. In the "Architecture at a Glance" section include a line: `> For the full architecture index, see [ARCHITECTURE.md](ARCHITECTURE.md).` If AGENTS.md already exists, do NOT touch it.
+If no AGENTS.md exists, create a hub with `<!-- scribe:managed -->` as the first line, followed by: Project Identity, Quick Reference, Architecture at a Glance, Documentation links, Conventions placeholder. In the "Architecture at a Glance" section include a line: `> For the full architecture index, see [ARCHITECTURE.md](ARCHITECTURE.md).` If AGENTS.md already exists, do NOT touch it.
