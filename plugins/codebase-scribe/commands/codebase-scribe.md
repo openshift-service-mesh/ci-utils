@@ -461,7 +461,7 @@ Options:
 
 ### Step 13: Summary
 
-Print: mode, branch, topics worked, budget used, scores table, contradictions count. If all topics are `complete`, also print: "All topics are complete." Then print: standard files status (created / updated / skipped for README.md, CONTRIBUTING.md, ARCHITECTURE.md), suggested next action.
+Print: mode, branch, topics worked, budget used, scores table, contradictions count. If all topics are `complete`, also print: "All topics are complete." Then print: standard files status (created / updated / skipped for README.md, CONTRIBUTING.md, ARCHITECTURE.md, CLAUDE.md, GEMINI.md, docs/upstream.md), suggested next action.
 
 Suggested next actions by mode:
 - After **seed/discover**: "Run `/codebase-scribe` again to draft content for the stubs."
