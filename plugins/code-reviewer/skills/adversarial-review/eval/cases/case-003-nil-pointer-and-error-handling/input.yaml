@@ -1,0 +1,95 @@
+review_brief: |
+  ## Change Overview
+  Branch: feature/user-profile-service, Base: main, Files: 2 files changed
+
+  ## Commit Messages
+  - feat: implement user profile fetching with config-driven timeout
+
+  ## Files Changed
+  - internal/profile/service.go (new file)
+  - internal/profile/config.go (new file)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/profile/service.go b/internal/profile/service.go
+  new file mode 100644
+  index 0000000..4a8b912
+  --- /dev/null
+  +++ b/internal/profile/service.go
+  @@ -0,0 +1,48 @@
+  +package profile
+  +
+  +import (
+  +	"context"
+  +	"fmt"
+  +)
+  +
+  +// Client fetches user data from the upstream identity service.
+  +type Client interface {
+  +	GetUser(ctx context.Context, id string) (*UserRecord, error)
+  +}
+  +
+  +// UserRecord holds the raw user data returned by the identity service.
+  +type UserRecord struct {
+  +	Name  string
+  +	Email string
+  +}
+  +
+  +// Service provides profile operations.
+  +type Service struct {
+  +	client Client
+  +	cfg    Config
+  +}
+  +
+  +// NewService creates a new Service.
+  +func NewService(client Client, cfg Config) *Service {
+  +	return &Service{client: client, cfg: cfg}
+  +}
+  +
+  +// GetDisplayName returns the display name for the given user ID.
+  +func (s *Service) GetDisplayName(ctx context.Context, id string) (string, error) {
+  +	// Error from GetUser is intentionally discarded for brevity.
+  +	resp, _ := s.client.GetUser(ctx, id)
+  +	return resp.Name, nil
+  +}
+  +
+  +// GetTimeout returns the configured timeout duration in milliseconds.
+  +func (s *Service) GetTimeout() int {
+  +	return s.cfg.Settings["timeout"]
+  +}
+  diff --git a/internal/profile/config.go b/internal/profile/config.go
+  new file mode 100644
+  index 0000000..2f3c401
+  --- /dev/null
+  +++ b/internal/profile/config.go
+  @@ -0,0 +1,12 @@
+  +package profile
+  +
+  +// Config holds service configuration loaded from environment.
+  +type Config struct {
+  +	// Settings is a map of string keys to integer values loaded from the config file.
+  +	// Keys may be absent if not specified in the config file.
+  +	Settings map[string]int
+  +}
+  +
+  +// DefaultConfig returns a Config with sensible defaults.
+  +func DefaultConfig() Config {
+  +	return Config{
+  +		Settings: map[string]int{
+  +			"timeout": 5000,
+  +		},
+  +	}
+  +}
+  ```
+
+  ## Reference Doc Excerpts
+  ### Style Guide
+  - Never use the blank identifier `_` to discard errors from functions that return `error`; always handle or propagate.
+  - Map lookups in Go return the zero value for missing keys; always check the `ok` form when the key may be absent.
+  - Dereferencing a pointer without a nil check is a runtime panic; always guard pointer dereferences.
+
+  ### Error Handling Policy
+  - Functions that call external services must propagate errors to the caller.
+  - Silently discarding errors from I/O, RPC, or database calls is prohibited.
+
+base_branch: "main"

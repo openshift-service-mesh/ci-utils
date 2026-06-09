@@ -1,0 +1,6 @@
+expected_findings: 2
+expected_has_critical: true
+expected_bug_categories:
+  - "Error Handling & Propagation"
+  - "Logic & Control Flow"
+expected_has_security: false

@@ -1,0 +1,6 @@
+expected_findings: 2
+expected_has_critical: true
+expected_bug_categories:
+  - "Concurrency & Race Conditions"
+  - "Authentication & Authorization"
+expected_has_security: true

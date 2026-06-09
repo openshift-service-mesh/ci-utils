@@ -1,0 +1,85 @@
+review_brief: |
+  ## Change Overview
+  Branch: feature/add-health-endpoint, Base: main, Files: 2 files changed
+
+  ## Commit Messages
+  - feat: add GET /health endpoint for liveness probes
+
+  ## Files Changed
+  - internal/server/handlers.go (modified)
+  - internal/server/server.go (modified)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/server/handlers.go b/internal/server/handlers.go
+  index a1b2c3d..e4f5a6b 100644
+  --- a/internal/server/handlers.go
+  +++ b/internal/server/handlers.go
+  @@ -1,13 +1,42 @@
+   package server
+
+   import (
+  +	"encoding/json"
+   	"net/http"
+  +	"time"
+   )
+
+  +// HealthResponse represents the response body for the health endpoint.
+  +type HealthResponse struct {
+  +	Status    string    `json:"status"`
+  +	Timestamp time.Time `json:"timestamp"`
+  +}
+  +
+  +// HealthHandler returns a handler that responds with the service health status.
+  +func HealthHandler() http.HandlerFunc {
+  +	return func(w http.ResponseWriter, r *http.Request) {
+  +		if r.Method != http.MethodGet {
+  +			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+  +			return
+  +		}
+  +
+  +		resp := HealthResponse{
+  +			Status:    "ok",
+  +			Timestamp: time.Now().UTC(),
+  +		}
+  +
+  +		w.Header().Set("Content-Type", "application/json")
+  +		w.WriteHeader(http.StatusOK)
+  +
+  +		if err := json.NewEncoder(w).Encode(resp); err != nil {
+  +			// Response header already sent; log the encode error but cannot change status.
+  +			// This is best-effort at this point.
+  +			_ = err
+  +		}
+  +	}
+  +}
+  +
+   func NotFoundHandler() http.HandlerFunc {
+   	return func(w http.ResponseWriter, r *http.Request) {
+   		http.Error(w, "not found", http.StatusNotFound)
+   	}
+   }
+
+  diff --git a/internal/server/server.go b/internal/server/server.go
+  index f1a2b3c..d4e5f6a 100644
+  --- a/internal/server/server.go
+  +++ b/internal/server/server.go
+  @@ -18,6 +18,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
+   	mux.Handle("/api/v1/", s.apiRouter())
+   	mux.Handle("/metrics", s.metricsHandler())
+  +	mux.Handle("/health", HealthHandler())
+   	mux.Handle("/", NotFoundHandler())
+   }
+  ```
+
+  ## Reference Doc Excerpts
+  ### Style Guide
+  - Handlers should validate HTTP method when not using a router that does this automatically.
+  - JSON responses must set Content-Type header before writing the body.
+  - Errors after headers are sent should be logged but not panic.
+
+  ### Security Posture
+  - Health endpoints must not expose internal state, secrets, or PII.
+  - Unauthenticated endpoints are acceptable for liveness probes.
+
+base_branch: "main"
