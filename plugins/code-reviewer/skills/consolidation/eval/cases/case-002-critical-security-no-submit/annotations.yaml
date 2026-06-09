@@ -1,0 +1,3 @@
+expected_verdict: "No"
+expected_total_findings: 3
+expected_dedup_count: 0

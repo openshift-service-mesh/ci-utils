@@ -1,0 +1,191 @@
+name: codebase-scribe-eval
+description: Evaluate scribe-maintain for accurate AGENT.md update detection and selective refresh
+skill: codebase-scribe:scribe-maintain
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 2400
+  max_budget_usd: 8.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow:
+    - Skill
+  deny: []
+
+mlflow:
+  experiment: codebase-scribe-eval
+
+dataset:
+  path: plugins/codebase-scribe/skills/scribe-maintain/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * change_type: type of code changes made (e.g., "new_component", "renamed_module",
+        "removed_feature", "new_dependency", "architecture_change")
+      * sections_expected_to_change: list of AGENT.md section names that should be updated
+      * sections_expected_unchanged: list of section names that should NOT be changed
+    - src/: current state of source code (with changes already applied)
+    - AGENT.md: existing AGENT.md that is now out of date relative to src/
+    - .claude/scribe/inventory.yaml: inventory from before the changes
+      (stale — scribe-maintain re-runs discover and detects drift)
+    - diff.txt: optional git diff showing what changed (for context)
+    - answers.yaml: responses to approval prompts
+      (confirm or decline each proposed section update)
+    - annotations.yaml:
+      * expected_sections_updated: sections that should be updated
+      * expected_sections_preserved: sections that must not be modified
+      * expected_no_update: boolean — if true, no changes expected (doc already current)
+
+inputs:
+  tools:
+    - match: AskUserQuestion (scribe-maintain asks for approval of each detected section update before applying)
+      prompt: |
+        Use answers.yaml to respond to approval requests.
+        If asked to approve updating a section in expected_sections_updated, answer "yes/approve".
+        If asked about a section in expected_sections_preserved, answer "no/decline".
+        Default to "approve" for any section not explicitly listed.
+
+outputs:
+  - path: output
+    schema: |
+      Updated AGENT.md written in-place at project root.
+      Use outputs["modified_files"] to access updated content.
+      If no_update expected, AGENT.md should remain unchanged (not in modified_files).
+      If sections updated, modified AGENT.md contains updated sections
+      while approved-unchanged sections are preserved character-for-character.
+      Also may update .claude/scribe/inventory.yaml with fresh discovery results.
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 7.0
+
+  - name: correct_sections_updated
+    description: |
+      Verifies that sections marked as expected_sections_updated were modified,
+      and sections in expected_sections_preserved were not changed.
+    check: |
+      import re
+      modified = outputs.get("modified_files", {})
+      annotations = outputs.get("annotations", {})
+      expected_updated = annotations.get("expected_sections_updated", [])
+      expected_unchanged = annotations.get("expected_sections_preserved", [])
+      expected_no_update = annotations.get("expected_no_update", False)
+      agent_md_key = next((k for k in modified if k.endswith("AGENT.md")), None)
+      if expected_no_update:
+          if agent_md_key:
+              return (False, "AGENT.md was modified but expected_no_update=true")
+          return (True, "AGENT.md correctly not modified (already up to date)")
+      if not agent_md_key and expected_updated:
+          return (False, f"AGENT.md not modified but expected sections to update: {expected_updated}")
+      if not agent_md_key:
+          return (True, "No modifications — no expected sections to update")
+      # Check that preserved sections exist in output (not deleted or corrupted)
+      content = modified[agent_md_key]
+      for section in expected_unchanged:
+          if section.lower() not in content.lower():
+              return (False, f"Section '{section}' missing from updated AGENT.md (was it deleted?)")
+      return (True, f"Section changes verified: updated={expected_updated}, preserved={expected_unchanged}")
+
+  - name: no_unauthorized_edits
+    description: |
+      Verifies that scribe-maintain did not edit sections that the user declined to update.
+      Declined sections must be byte-identical to the input AGENT.md.
+    check: |
+      annotations = outputs.get("annotations", {})
+      modified = outputs.get("modified_files", {})
+      agent_md_key = next((k for k in modified if k.endswith("AGENT.md")), None)
+      if not agent_md_key:
+          return (True, "AGENT.md not modified — no unauthorized edits possible")
+      expected_no_update = annotations.get("expected_no_update", False)
+      if expected_no_update:
+          return (False, f"AGENT.md was modified despite expected_no_update=true")
+      preserved = annotations.get("expected_sections_preserved", [])
+      if not preserved:
+          return (True, "No sections marked for preservation — skipping check")
+      conversation = outputs.get("conversation", "")
+      declined_approved_count = conversation.lower().count("declined")
+      if declined_approved_count == 0 and preserved:
+          return (0.5, "No 'declined' in conversation but sections marked for preservation — verify manually")
+      return (True, f"Decline tracking confirmed; {declined_approved_count} section updates declined in conversation")
+
+  - name: approval_workflow_used
+    description: |
+      Verifies that scribe-maintain used an approval workflow (AskUserQuestion) before
+      applying each section update, rather than silently modifying the document.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      modified = outputs.get("modified_files", {})
+      agent_md_key = next((k for k in modified if k.endswith("AGENT.md")), None)
+      if not agent_md_key:
+          return (True, "No AGENT.md modified — no approval workflow needed")
+      update_prompts = re.findall(
+          r'(update|refresh|change|revise|regenerate)[^\n]{0,50}(section|architecture|overview|guide)',
+          conversation, re.IGNORECASE
+      )
+      if not update_prompts:
+          return (0.5, "No approval prompts detected in conversation — may have modified without asking")
+      return (True, f"Approval workflow used: {len(update_prompts)} update questions in conversation")
+
+  - name: maintenance_quality
+    description: |
+      LLM evaluates whether scribe-maintain correctly identified what needed updating,
+      asked meaningful questions, and produced accurate updated content.
+    prompt: |
+      Evaluate the quality of this scribe-maintain operation.
+
+      Original change type: {{ arguments.change_type }}
+      Expected sections to update: {{ arguments.sections_expected_to_change }}
+
+      Conversation and outputs:
+      {{ conversation }}
+
+      Updated AGENT.md content (if any):
+      {{ outputs }}
+
+      Assess:
+      1. Did scribe-maintain correctly detect that {{ arguments.change_type }} required doc updates?
+      2. Were approval questions specific to the actual changes (not generic "update everything")?
+      3. Are updated sections accurate to the current code state (not recycled from before)?
+      4. Were preserved sections left untouched (character-level preservation)?
+      5. Was the inventory also refreshed to match the current code state?
+
+      Score 1-5:
+      1: Missed the change or rewrote sections that didn't need updating
+      2: Detected the change but approval questions vague or section selection wrong
+      3: Correct detection and approval flow but some sections inaccurate
+      4: Good maintenance: correct detection, clear questions, accurate updates
+      5: Excellent: precise detection, specific questions, accurate updates, preserved unchanged
+
+  arguments:
+    change_type: "{{ arguments.change_type }}"
+    sections_expected_to_change: "{{ arguments.sections_expected_to_change }}"
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  correct_sections_updated:
+    min_pass_rate: 0.9
+  no_unauthorized_edits:
+    min_pass_rate: 0.95
+  approval_workflow_used:
+    min_pass_rate: 0.9
+  maintenance_quality:
+    min_mean: 3.5

@@ -1,0 +1,5 @@
+expected_component_count: 3
+expected_entry_points:
+  - main.py
+expected_test_framework: "pytest"
+expected_build_system: "python"

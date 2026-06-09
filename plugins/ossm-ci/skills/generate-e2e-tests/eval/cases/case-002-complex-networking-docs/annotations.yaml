@@ -1,0 +1,3 @@
+generation_should_succeed: true
+expected_test_file_count: 2
+quality_score_estimate: 8

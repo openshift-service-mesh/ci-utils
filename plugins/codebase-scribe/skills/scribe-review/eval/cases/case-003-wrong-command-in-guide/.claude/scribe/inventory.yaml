@@ -1,0 +1,41 @@
+# STALE: inventory captured before 'run' target was removed from Makefile.
+# The 'run' command no longer exists; it was replaced by docker-build + deploy.
+project:
+  name: catalog-service
+  description: A REST API service for product catalog management
+  type: service
+
+languages:
+  primary: go
+  secondary: []
+
+frameworks:
+  - name: gin
+    purpose: HTTP routing and middleware
+
+architecture:
+  pattern: REST microservice
+  description: Single-layer REST API for product catalog operations.
+  components:
+    - name: ProductHandler
+      path: handlers/product.go
+      type: handler
+      description: Handles HTTP requests for product CRUD operations
+
+entry_points:
+  - main.go
+
+build_system:
+  name: make
+  config_file: Makefile
+  commands:
+    build: make build
+    test: make test
+    # STALE: 'run' target no longer exists in Makefile
+    run: make run
+    clean: make clean
+
+test_framework:
+  name: testing
+  test_dir: .
+  config: null

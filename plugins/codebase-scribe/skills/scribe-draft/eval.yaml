@@ -1,0 +1,192 @@
+name: codebase-scribe-eval
+description: Evaluate scribe-draft for complete AGENT.md generation from codebase inventory
+skill: codebase-scribe:scribe-draft
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 2400
+  max_budget_usd: 8.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow:
+    - Skill
+  deny: []
+
+mlflow:
+  experiment: codebase-scribe-eval
+
+dataset:
+  path: plugins/codebase-scribe/skills/scribe-draft/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * scope: one of "full" (new project) or "section" (add specific section to existing AGENT.md)
+      * audience: intended audience (e.g., "developer", "contributor", "operator")
+      * focus: optional list of sections to emphasize (e.g., ["architecture", "testing"])
+    - .claude/scribe/inventory.yaml: pre-generated inventory from scribe-discover
+      (must exist for scribe-draft to operate without running discover first)
+    - src/: sample source code for context during section drafting
+    - existing_agent_md/: optional existing AGENT.md for "section" scope cases
+    - answers.yaml: responses for interactive prompts
+      (e.g., audience confirmation questions)
+    - annotations.yaml:
+      * expected_sections: list of section names expected in the output AGENT.md
+      * expected_min_length: minimum character count for generated AGENT.md
+      * expected_mentions: list of keywords/component names that must appear in the doc
+
+inputs:
+  tools:
+    - match: AskUserQuestion (scribe-draft may ask for audience or section focus clarification)
+      prompt: |
+        Use answers.yaml to respond. If asked about audience, use input.yaml audience value.
+        If asked about scope or focus, use input.yaml scope and focus values.
+        Default to "developer" audience and "full" scope if answers.yaml doesn't specify.
+
+outputs:
+  - path: output
+    schema: |
+      AGENT.md written to the project root (or section appended to existing AGENT.md).
+      Use outputs["files"] to access generated content.
+      AGENT.md structure (for full scope):
+        # Project Overview
+        # Architecture
+        ## Components (with descriptions and file paths)
+        ## Data Flow (optional)
+        # Development Guide
+        ## Setup
+        ## Building and Testing
+        ## Common Commands
+        # Key Conventions
+        ## Code Organization
+        ## Testing Conventions
+        # Contributing
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 7.0
+
+  - name: agent_md_generated
+    description: |
+      Verifies that AGENT.md was created at the project root with sufficient length
+      and required section headers.
+    check: |
+      files = outputs.get("files", {})
+      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
+      if not agent_md_keys:
+          return (False, "AGENT.md not found in generated files")
+      content = files[agent_md_keys[0]]
+      annotations = outputs.get("annotations", {})
+      min_length = annotations.get("expected_min_length", 500)
+      if len(content) < min_length:
+          return (False, f"AGENT.md too short: {len(content)} chars (expected {min_length}+)")
+      return (True, f"AGENT.md generated: {len(content)} chars at {agent_md_keys[0]}")
+
+  - name: required_sections_present
+    description: |
+      Verifies that expected section headers from annotations appear in the AGENT.md.
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
+      if not agent_md_keys:
+          return (True, "AGENT.md not found — see agent_md_generated judge")
+      content = files[agent_md_keys[0]].lower()
+      expected_sections = annotations.get("expected_sections", ["architecture", "development"])
+      missing = [s for s in expected_sections if s.lower() not in content]
+      if missing:
+          return (False, f"Required sections missing from AGENT.md: {missing}")
+      return (True, f"All expected sections present: {expected_sections}")
+
+  - name: component_mentions
+    description: |
+      Checks that key component names from inventory.yaml are mentioned in AGENT.md.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
+      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
+      if not agent_md_keys:
+          return (True, "AGENT.md not found — see agent_md_generated judge")
+      content = files[agent_md_keys[0]]
+      expected_mentions = annotations.get("expected_mentions", [])
+      if not expected_mentions and inv_keys:
+          inv = yaml.safe_load(files[inv_keys[0]])
+          expected_mentions = [c["name"] for c in inv.get("architecture", {}).get("components", [])[:3]]
+      missing = [m for m in expected_mentions if m.lower() not in content.lower()]
+      if len(missing) > len(expected_mentions) * 0.3:
+          return (False, f"Key components not mentioned in AGENT.md: {missing}")
+      return (True, f"Key component mentions verified ({len(expected_mentions) - len(missing)}/{len(expected_mentions)})")
+
+  - name: no_inventory_leakage
+    description: |
+      Verifies that AGENT.md does not contain raw YAML from inventory.yaml.
+      The inventory is a machine format; AGENT.md should be prose documentation.
+    check: |
+      import re
+      files = outputs.get("files", {})
+      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
+      if not agent_md_keys:
+          return (True, "No AGENT.md to check")
+      content = files[agent_md_keys[0]]
+      yaml_blocks = re.findall(r'```yaml\n(.*?)```', content, re.DOTALL)
+      inventory_keys = ["entry_points:", "key_directories:", "test_framework:", "build_system:"]
+      for block in yaml_blocks:
+          for key in inventory_keys:
+              if key in block:
+                  return (False, f"Raw inventory YAML key '{key}' found in AGENT.md code block — doc should use prose")
+      return (True, "No raw inventory YAML leakage detected")
+
+  - name: documentation_quality
+    description: |
+      LLM evaluates whether AGENT.md is well-written prose documentation
+      that would actually help a developer understand and work with the codebase.
+    prompt: |
+      Evaluate the quality of the generated AGENT.md documentation.
+
+      {{ outputs }}
+
+      Assess:
+      1. Is the Project Overview concise and informative (not just "This is a project")?
+      2. Does the Architecture section explain component relationships, not just list components?
+      3. Are Development Guide commands specific and runnable (not "run tests" but "go test ./...")?
+      4. Are Key Conventions grounded in what was actually discovered, not generic advice?
+      5. Is the document well-structured for a new contributor to get oriented quickly?
+
+      Score 1-5:
+      1: Generic boilerplate — could apply to any project; commands wrong or missing
+      2: Some project-specific content but mostly generic; gaps in key sections
+      3: Adequately specific but some sections are vague or commands unverified
+      4: Good specificity with runnable commands and accurate architecture description
+      5: Excellent: project-specific, comprehensive, a new contributor could use it immediately
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  agent_md_generated:
+    min_pass_rate: 1.0
+  required_sections_present:
+    min_pass_rate: 0.9
+  component_mentions:
+    min_pass_rate: 0.9
+  no_inventory_leakage:
+    min_pass_rate: 1.0
+  documentation_quality:
+    min_mean: 3.5

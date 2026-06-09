@@ -1,0 +1,60 @@
+review_context: |
+  ## Consolidated Review — feature/resource-actions-api → main
+
+  ### Summary
+  This PR adds action endpoints to three existing REST resources: orders, shipments, and
+  invoices. 1 finding: 0 bugs, 0 security issues, 0 style notes, 1 improvement suggestion.
+
+  ---
+
+  ### BUG Findings
+  None.
+
+  ### STY Findings
+  None.
+
+  ### IMP Findings
+
+  **IMP-1** — `internal/api/orders/handler.go`, `internal/api/shipments/handler.go`,
+               `internal/api/invoices/handler.go`
+  All six new action endpoints introduced in this PR follow the same URL structure:
+  the action name appears as the last path segment after the resource ID, and the verb
+  is always a noun form (not an HTTP method override). Examples from the diff:
+
+    POST /api/v1/orders/:id/cancel
+    POST /api/v1/orders/:id/fulfill
+    POST /api/v1/shipments/:id/reroute
+    POST /api/v1/shipments/:id/hold
+    POST /api/v1/invoices/:id/void
+    POST /api/v1/invoices/:id/reissue
+
+  The pattern is: `POST /api/v1/{resources}/:id/{action}` where `{action}` is a lowercase
+  verb-as-noun (e.g., `cancel`, `fulfill`, `void`). This is consistent across all three
+  resource types and appears intentional, but api-conventions.md has no section on action
+  endpoints or non-CRUD URL patterns.
+
+  Engineer response: "Correct — that's our deliberate pattern for resource actions that
+  don't map to CRUD. We discussed it in the architecture meeting last month. Action endpoints
+  always use POST (even for idempotent ones like `void`) because they mutate state. The action
+  name is lowercase, singular, no hyphens. All action endpoints require authentication —
+  there are no public action endpoints."
+
+  Reviewer note: The engineer's clarification adds three sub-rules worth capturing:
+  1. Always POST for actions (not PUT/PATCH even if idempotent)
+  2. Action name: lowercase, singular, no hyphens
+  3. All action endpoints require authentication
+
+  These are precise enough to document. The base URL pattern itself is the primary convention.
+
+  ---
+
+  ### Engineer Q&A
+  Q: Is `:id` always a UUID or can it be other formats?
+  A: Always UUID v4. That's documented in the ID conventions section of api-conventions.md.
+
+  Q: Should action endpoints return the updated resource or just a 204?
+  A: It depends on the action — `cancel` returns the updated order, `void` returns 204.
+     We haven't standardized this yet. Don't add a convention for it yet.
+
+branch_name: "feature/resource-actions-api"
+base_branch: "main"

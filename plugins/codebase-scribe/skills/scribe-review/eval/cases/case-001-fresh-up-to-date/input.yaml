@@ -1,0 +1,7 @@
+staleness_type: "fresh_up_to_date"
+expected_stale_sections: []
+expected_current_sections:
+  - "Architecture"
+  - "Development Guide"
+  - "Key Directories"
+  - "Testing"

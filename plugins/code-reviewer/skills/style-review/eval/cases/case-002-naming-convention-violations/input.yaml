@@ -1,0 +1,145 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/config-loader | Base: main | Unit: go-config | Files: 2 changed
+
+  ## What Changed
+  Added configuration loading package with exported functions and constants for
+  managing retry settings and fetching internal configuration.
+
+  ## Files in This Unit
+  - `config/loader.go` (added)
+  - `config/retry.go` (added)
+
+  ## Commit Messages
+  - feat: add config loader with retry support
+
+  ## Relevant Reference Doc Excerpts
+  ### Style Guide — Naming Conventions
+  - Exported functions, types, and constants must use PascalCase (e.g., `LoadConfig`, `MaxRetry`).
+  - Unexported identifiers must use camelCase (e.g., `parseFile`, `defaultTimeout`).
+  - Functions that begin with lowercase are package-private and must NOT use PascalCase.
+
+  ## Full Diff for This Unit
+  ```diff
+  diff --git a/config/loader.go b/config/loader.go
+  new file mode 100644
+  index 0000000..b82f34a
+  --- /dev/null
+  +++ b/config/loader.go
+  @@ -0,0 +1,45 @@
+  +package config
+  +
+  +import (
+  +	"fmt"
+  +	"os"
+  +
+  +	"gopkg.in/yaml.v3"
+  +)
+  +
+  +// maxRetry is the maximum number of retry attempts for config reload.
+  +// EXPORTED but uses camelCase — violates convention.
+  +const maxRetry = 3
+  +
+  +// get_user_by_id loads a user configuration entry by ID from the given file.
+  +// EXPORTED intent but uses snake_case — violates convention.
+  +func get_user_by_id(path string, userID string) (*UserConfig, error) {
+  +	data, err := os.ReadFile(path)
+  +	if err != nil {
+  +		return nil, fmt.Errorf("read config file: %w", err)
+  +	}
+  +
+  +	var cfg FileConfig
+  +	if err := yaml.Unmarshal(data, &cfg); err != nil {
+  +		return nil, fmt.Errorf("unmarshal config: %w", err)
+  +	}
+  +
+  +	entry, ok := cfg.Users[userID]
+  +	if !ok {
+  +		return nil, fmt.Errorf("user %q not found in config", userID)
+  +	}
+  +	return &entry, nil
+  +}
+  +
+  +// Load reads the YAML config at path and returns a parsed Config.
+  +func Load(path string) (*Config, error) {
+  +	data, err := os.ReadFile(path)
+  +	if err != nil {
+  +		return nil, fmt.Errorf("read config: %w", err)
+  +	}
+  +	var cfg Config
+  +	if err := yaml.Unmarshal(data, &cfg); err != nil {
+  +		return nil, fmt.Errorf("unmarshal config: %w", err)
+  +	}
+  +	return &cfg, nil
+  +}
+  diff --git a/config/retry.go b/config/retry.go
+  new file mode 100644
+  index 0000000..c1d9e02
+  --- /dev/null
+  +++ b/config/retry.go
+  @@ -0,0 +1,28 @@
+  +package config
+  +
+  +import "time"
+  +
+  +// GetInternalConfig returns internal retry settings.
+  +// Unexported intent (internal helper) but uses PascalCase — violates convention.
+  +func GetInternalConfig() retrySettings {
+  +	return retrySettings{
+  +		MaxAttempts: maxRetry,
+  +		Backoff:     500 * time.Millisecond,
+  +	}
+  +}
+  +
+  +type retrySettings struct {
+  +	MaxAttempts int
+  +	Backoff     time.Duration
+  +}
+  +
+  +// applyDefaults fills in zero-value fields of s with safe defaults.
+  +func applyDefaults(s *retrySettings) {
+  +	if s.MaxAttempts == 0 {
+  +		s.MaxAttempts = maxRetry
+  +	}
+  +	if s.Backoff == 0 {
+  +		s.Backoff = 200 * time.Millisecond
+  +	}
+  +}
+  ```
+
+style_guide_excerpt: |
+  ## Naming Conventions
+
+  ### Exported Identifiers
+  All symbols intended for use outside the package must be exported via PascalCase.
+  This applies to functions, types, constants, and variables.
+
+  Correct:
+  ```go
+  const MaxRetry = 3
+  func GetUserByID(id string) (*User, error) { ... }
+  ```
+
+  Incorrect (snake_case or wrong case for exported intent):
+  ```go
+  const maxRetry = 3      // looks unexported, confusing if used across packages
+  func get_user_by_id(id string) (*User, error) { ... }  // snake_case forbidden in Go
+  ```
+
+  ### Unexported Identifiers
+  Symbols used only within a package must be lowercase camelCase. Using PascalCase for a
+  package-private helper misleads callers into thinking it is part of the public API.
+
+  Correct:
+  ```go
+  func getInternalConfig() retrySettings { ... }
+  ```
+
+  Incorrect:
+  ```go
+  func GetInternalConfig() retrySettings { ... }  // PascalCase implies public API
+  ```
+
+  ### No snake_case
+  Go identifiers must never use underscores as word separators (except in test function
+  names like `TestFoo_EdgeCase`). snake_case is a hard violation.

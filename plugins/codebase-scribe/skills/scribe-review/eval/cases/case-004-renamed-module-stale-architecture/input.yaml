@@ -1,0 +1,8 @@
+staleness_type: "renamed_module"
+expected_stale_sections:
+  - "Architecture"
+expected_current_sections:
+  - "Development Guide"
+  - "Testing"
+  - "Dependencies"
+  - "Key Conventions"

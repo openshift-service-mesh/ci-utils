@@ -1,0 +1,187 @@
+name: codebase-scribe-eval
+description: Evaluate scribe-discover for accurate codebase inventory generation
+skill: codebase-scribe:scribe-discover
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 1800
+  max_budget_usd: 5.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: codebase-scribe-eval
+
+dataset:
+  path: plugins/codebase-scribe/skills/scribe-discover/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * workspace_description: brief description of what kind of codebase the sample represents
+        (e.g., "Go microservice with REST API", "Python ML pipeline", "TypeScript monorepo")
+      * expected_languages: list of programming languages present
+      * expected_frameworks: list of frameworks/libraries expected to be detected
+      * expected_architecture: brief description of expected architecture pattern
+    - src/: sample source code directory structure matching the workspace_description
+      (e.g., main.go, handlers/, models/, Makefile, go.mod for a Go service)
+    - existing_docs/: optional pre-existing documentation files (README.md, CONTRIBUTING.md)
+      that scribe-discover should use to enrich the discovery
+    - annotations.yaml: expected discovery output:
+      * expected_component_count: number of components expected in inventory
+      * expected_entry_points: list of main entry point files
+      * expected_test_framework: test framework name detected from test files
+      * expected_build_system: build system detected (go, make, npm, poetry, etc.)
+
+outputs:
+  - path: output
+    schema: |
+      Discovery inventory written to .claude/scribe/inventory.yaml.
+      Use outputs["files"] to access generated files.
+      inventory.yaml structure:
+        project:
+          name: string
+          description: string
+          type: string (service|library|tool|monorepo)
+        languages:
+          primary: string
+          secondary: list
+        frameworks: list of {name, purpose, version}
+        architecture:
+          pattern: string
+          description: string
+          components: list of {name, path, type, description}
+        entry_points: list of paths
+        build_system: {name, config_file, commands}
+        test_framework: {name, test_dir, config}
+        key_directories: list of {path, purpose}
+        dependencies: list of {name, version, purpose}
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 4.0
+
+  - name: inventory_yaml_valid
+    description: |
+      Validates that inventory.yaml was created with required fields and parseable YAML.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
+      if not inv_keys:
+          return (False, "inventory.yaml not found at .claude/scribe/inventory.yaml")
+      content = files[inv_keys[0]]
+      try:
+          inv = yaml.safe_load(content)
+      except yaml.YAMLError as e:
+          return (False, f"inventory.yaml YAML parse error: {e}")
+      required_keys = ["project", "languages", "architecture"]
+      missing = [k for k in required_keys if k not in inv]
+      if missing:
+          return (False, f"inventory.yaml missing required top-level keys: {missing}")
+      if not inv.get("project", {}).get("name"):
+          return (False, "inventory.yaml project.name is empty")
+      return (True, f"inventory.yaml valid: project={inv['project']['name']}, type={inv['project'].get('type')}")
+
+  - name: languages_detected
+    description: |
+      Verifies that the languages detected in inventory.yaml match those expected
+      from the sample codebase structure.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
+      if not inv_keys:
+          return (True, "inventory.yaml not found — checked by inventory_yaml_valid judge")
+      inv = yaml.safe_load(files[inv_keys[0]])
+      expected_langs = [l.lower() for l in annotations.get("expected_languages", [])]
+      if not expected_langs:
+          return (True, "No expected_languages annotation — skipping language check")
+      detected = [inv.get("languages", {}).get("primary", "").lower()]
+      detected += [l.lower() for l in inv.get("languages", {}).get("secondary", [])]
+      detected = [d for d in detected if d]
+      missing_langs = [l for l in expected_langs if not any(l in d for d in detected)]
+      if missing_langs:
+          return (False, f"Expected languages not detected: {missing_langs} (detected: {detected})")
+      return (True, f"All expected languages detected: {detected}")
+
+  - name: components_enumerated
+    description: |
+      Checks that the architecture.components list is non-empty and that component
+      count is in a reasonable range relative to the codebase size.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
+      if not inv_keys:
+          return (True, "inventory.yaml not found — checked by inventory_yaml_valid judge")
+      inv = yaml.safe_load(files[inv_keys[0]])
+      components = inv.get("architecture", {}).get("components", [])
+      if not components:
+          return (False, "architecture.components is empty — no components discovered")
+      expected_count = annotations.get("expected_component_count", 1)
+      if len(components) < expected_count:
+          return (0.5, f"Only {len(components)} components found, expected ~{expected_count}")
+      return (True, f"{len(components)} components enumerated in architecture")
+
+  - name: discovery_accuracy
+    description: |
+      LLM evaluates whether the inventory accurately describes the provided sample codebase,
+      with correct architecture pattern, component descriptions, and build system details.
+    prompt: |
+      Evaluate how accurately this inventory.yaml describes the sample codebase.
+
+      Generated inventory:
+      {{ outputs }}
+
+      Sample codebase workspace_description: {{ arguments.workspace_description }}
+      Expected frameworks: {{ arguments.expected_frameworks }}
+
+      Assess:
+      1. Does the architecture.pattern match the described codebase type?
+      2. Are component descriptions specific and accurate (not generic placeholders)?
+      3. Is the build_system correctly identified from actual config files?
+      4. Are entry_points the real main files (not README or config files)?
+      5. Is the test_framework correctly detected from test file patterns?
+
+      Score 1-5:
+      1: Mostly wrong — wrong architecture, generic descriptions, undetected frameworks
+      2: Some correct detection but major gaps or misidentifications
+      3: Core detection correct but missing frameworks or inaccurate descriptions
+      4: Good accuracy with minor gaps in framework/dependency detection
+      5: Accurate and complete — architecture, components, build, tests all correct
+
+  arguments:
+    workspace_description: "{{ arguments.workspace_description }}"
+    expected_frameworks: "{{ arguments.expected_frameworks }}"
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  inventory_yaml_valid:
+    min_pass_rate: 1.0
+  languages_detected:
+    min_pass_rate: 0.9
+  components_enumerated:
+    min_pass_rate: 0.9
+  discovery_accuracy:
+    min_mean: 3.5

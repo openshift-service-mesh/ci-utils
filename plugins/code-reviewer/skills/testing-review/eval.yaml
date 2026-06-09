@@ -1,0 +1,162 @@
+name: code-reviewer-eval
+description: Evaluate testing review findings for coverage gaps, test quality, and actionability
+skill: code-reviewer:testing-review
+
+execution:
+  mode: case
+  arguments: "{unit_brief}"
+  timeout: 900
+  max_budget_usd: 3.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: code-reviewer-eval
+
+dataset:
+  path: plugins/code-reviewer/skills/testing-review/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * unit_brief: markdown text — the unit-scoped review brief containing:
+        changed source files and test files with diffs, commit messages, and relevant
+        excerpts from testing-practices.md
+      * testing_practices_excerpt: relevant sections from testing-practices.md for this case
+    - test_files/: sample existing test files to verify coverage checking behavior
+    - annotations.yaml: expected TST-N count, expected coverage gaps, expected severity,
+      whether any "false positive" test suggestions (tests that already exist) should be avoided
+
+outputs:
+  - path: output
+    schema: |
+      Testing review report in conversation text (stdout-only, no files written to disk).
+      Use {{ conversation }} in judges to access the report.
+      Report structure (following templates/phase-report.md):
+      - Heading with "Testing Review Report" and review unit name
+      - Strengths section (existing good test coverage highlighted)
+      - Issues by severity (Critical/Important/Minor) with TST-N prefixed findings
+      - Each TST-N finding: ID, file:line reference, description of missing/poor test,
+        why it matters, suggested test case with reference to similar existing tests
+      - IMP-N improvements for test quality (not coverage gaps)
+      - Open Questions for genuinely uncertain items
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 2.5
+
+  - name: structured_finding_ids
+    description: |
+      Validates all findings use structured TST-N or IMP-N IDs and are sequential.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      tst_nums = [int(m) for m in re.findall(r'\*\*TST-(\d+)\*\*', conversation)]
+      imp_nums = [int(m) for m in re.findall(r'\*\*IMP-(\d+)\*\*', conversation)]
+      all_findings = len(tst_nums) + len(imp_nums)
+      if all_findings == 0:
+          annotations = outputs.get("annotations", {})
+          if annotations.get("expected_tst_count", 0) == 0:
+              return (True, "No findings expected and none found")
+          return (True, "No findings found (may indicate adequate test coverage)")
+      issues = []
+      if tst_nums:
+          tst_nums.sort()
+          if tst_nums != list(range(1, max(tst_nums) + 1)):
+              issues.append(f"TST IDs not sequential: {tst_nums}")
+      if imp_nums:
+          imp_nums.sort()
+          if imp_nums != list(range(1, max(imp_nums) + 1)):
+              issues.append(f"IMP IDs not sequential: {imp_nums}")
+      if issues:
+          return (False, "; ".join(issues))
+      return (True, f"Valid structured IDs: {len(tst_nums)} TST, {len(imp_nums)} IMP findings")
+
+  - name: suggestions_reference_existing_tests
+    description: |
+      Verifies that test suggestions reference similar existing test cases in the codebase
+      rather than being vague ("add tests for X").
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      tst_blocks = re.findall(r'\*\*TST-\d+\*\*.*?(?=\*\*TST-|\*\*IMP-|## |$)', conversation, re.DOTALL)
+      if not tst_blocks:
+          return (True, "No TST findings to validate")
+      vague_count = 0
+      for block in tst_blocks:
+          has_test_ref = re.search(r'similar to .+_test|like .+_test|following .+_test|Test\w+_\w+', block, re.IGNORECASE)
+          has_suggested_name = re.search(r'Test\w+|test_\w+', block)
+          if not has_test_ref and not has_suggested_name:
+              vague_count += 1
+      if vague_count > len(tst_blocks) * 0.3:
+          return (False, f"{vague_count}/{len(tst_blocks)} TST findings lack test name or reference to similar tests")
+      return (True, f"{len(tst_blocks) - vague_count}/{len(tst_blocks)} findings have test names or existing test references")
+
+  - name: finding_file_line_refs
+    description: |
+      Checks that every TST-N finding includes a file:line reference to the code lacking coverage.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      tst_findings = re.findall(r'\*\*TST-\d+\*\*[^*\n]*', conversation)
+      if not tst_findings:
+          return (True, "No TST findings to validate")
+      missing = [f[:60] for f in tst_findings if not re.search(r'`[^`]+:\d+`', f)]
+      if missing:
+          return (False, f"TST findings missing file:line references: {missing[:3]}")
+      return (True, f"All {len(tst_findings)} TST findings have file:line references")
+
+  - name: testing_coverage_quality
+    description: |
+      LLM evaluates whether coverage gaps identified are genuine (not false positives),
+      severity is appropriate, and suggestions are specific and actionable.
+    prompt: |
+      Evaluate the quality of this testing review report.
+
+      Testing practices excerpt provided to the skill:
+      {{ arguments.testing_practices_excerpt }}
+
+      Testing review report:
+      {{ conversation }}
+
+      Assess:
+      1. Are TST-N findings for genuine coverage gaps (not tests that already exist)?
+      2. Is severity appropriate? Critical only for auth/security/core logic without tests.
+      3. Do suggestions name specific test cases and reference similar existing tests?
+      4. Does the review avoid scope creep into bugs or style issues?
+      5. Are testing-practices.md conventions cited when applicable?
+
+      Score 1-5:
+      1: False positives dominate or suggestions are too vague to act on
+      2: Some valid findings but many false positives or missing references
+      3: Mostly valid findings but suggestions lack specificity
+      4: Good review: real gaps, appropriate severity, mostly actionable
+      5: Excellent: verified real gaps, severity-appropriate, specific test names/references
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  structured_finding_ids:
+    min_pass_rate: 0.95
+  suggestions_reference_existing_tests:
+    min_pass_rate: 0.8
+  finding_file_line_refs:
+    min_pass_rate: 0.9
+  testing_coverage_quality:
+    min_mean: 3.5

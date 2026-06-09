@@ -1,0 +1,9 @@
+expected_docs_generated:
+  - "style-guide.md"
+  - "testing-practices.md"
+  - "security-posture.md"
+expected_languages:
+  - "go"
+expected_base_branch: "main"
+expected_security_doc: true
+expected_api_doc: false

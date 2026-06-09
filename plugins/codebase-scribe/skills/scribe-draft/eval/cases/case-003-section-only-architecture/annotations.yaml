@@ -1,0 +1,10 @@
+expected_sections:
+  - Architecture
+
+expected_min_length: 200
+
+expected_mentions:
+  - UserHandler
+  - UserRepository
+  - UserService
+  - HealthHandler

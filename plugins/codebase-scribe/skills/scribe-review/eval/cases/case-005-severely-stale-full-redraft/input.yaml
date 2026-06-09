@@ -1,0 +1,7 @@
+staleness_type: "outdated_architecture"
+expected_stale_sections:
+  - "Architecture"
+  - "Key Directories"
+  - "Development Guide"
+expected_current_sections:
+  - "Dependencies"

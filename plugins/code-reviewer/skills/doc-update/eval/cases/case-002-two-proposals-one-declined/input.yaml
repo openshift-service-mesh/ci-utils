@@ -1,0 +1,53 @@
+review_context: |
+  ## Consolidated Review — feature/order-service-tests → main
+
+  ### Summary
+  This PR adds comprehensive test coverage to the order service package, adding 14 new test
+  functions. 2 findings: 0 bugs, 0 security issues, 0 style notes, 2 improvement suggestions.
+
+  ---
+
+  ### BUG Findings
+  None.
+
+  ### STY Findings
+  None.
+
+  ### IMP Findings
+
+  **IMP-1** — `internal/order/service_test.go`, `internal/order/repository_test.go`,
+               `internal/order/handler_test.go`
+  Every test file in this PR uses `github.com/stretchr/testify/assert` for assertions.
+  The pattern is consistent: `assert.NoError(t, err)`, `assert.Equal(t, expected, actual)`,
+  `assert.Contains(t, slice, item)`. The testing-practices.md doc describes using `t.Errorf`
+  and `t.Fatalf` directly but does not mention testify. Given that all 14 new tests and
+  several existing tests already use testify, this appears to be the de facto standard.
+
+  Engineer response: "We switched to testify about 6 months ago. Much cleaner output and
+  the `assert` vs `require` distinction (continue vs halt on failure) is really useful.
+  I should have updated the docs ages ago."
+
+  Reviewer note: This is a clear doc-gap — the practice is established and the engineer
+  explicitly confirmed it is intentional. Worth adding to testing-practices.md.
+
+  **IMP-2** — `internal/order/service_test.go:1`
+  The file uses 3-space indentation rather than the standard tab-based indentation that
+  gofmt produces. This does not match project conventions.
+
+  Engineer response: "I know, I have my editor set to display tabs as 3 spaces visually.
+  The actual file uses tabs — it's just how my terminal renders it. gofmt is fine with it."
+
+  Reviewer note: Engineer clarified this is a display artifact, not an actual indentation
+  change. The file uses tabs as required; the 3-space appearance is editor/terminal rendering.
+  Not a real convention issue — the existing gofmt rule already covers this.
+
+  ---
+
+  ### Engineer Q&A
+  Q: Are `assert` (non-fatal) and `require` (fatal/halt) both acceptable in the same test?
+  A: Yes — use `require` when subsequent assertions would be meaningless if the first fails
+     (e.g., require the response is non-nil before asserting on its fields), and `assert`
+     elsewhere. That's the intended usage.
+
+branch_name: "feature/order-service-tests"
+base_branch: "main"

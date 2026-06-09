@@ -1,0 +1,13 @@
+expected_sections:
+  - Project Overview
+  - Architecture
+  - Development Guide
+
+expected_min_length: 800
+
+expected_mentions:
+  - MLClassifier
+  - fastapi
+  - pytest
+  - APIRouter
+  - poetry

@@ -1,0 +1,22 @@
+# answers.yaml — LLM answerer guidance for case-005
+#
+# The user wants a full AGENT.md for a TypeScript monorepo with
+# React frontend and Express backend. The audience is developers
+# who need to understand how the packages fit together.
+
+audience: developer
+scope: full
+focus: []
+
+guidance: >
+  The user wants a complete AGENT.md for the platform-web TypeScript monorepo,
+  written for developers who will contribute to either the frontend or backend package.
+  The Architecture section should explain the monorepo structure (packages/frontend,
+  packages/backend, packages/shared) and how the React SPA and Express API relate.
+  The Development Guide must include the `npm install` and `npm run dev` commands
+  that start both packages concurrently. Note that `npm test` runs Jest across all
+  workspaces. The Key Conventions section should explain the shared TypeScript types
+  in packages/shared and the workspace import pattern. If asked about audience,
+  confirm "developer". If asked about scope, confirm "full". Generate all sections
+  including Project Overview, Architecture, Development Guide, Key Conventions,
+  and Contributing.

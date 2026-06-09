@@ -1,0 +1,154 @@
+name: code-reviewer-eval
+description: Evaluate triage skill for review unit grouping and brief generation quality
+skill: code-reviewer:triage
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 600
+  max_budget_usd: 2.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: code-reviewer-eval
+
+dataset:
+  path: plugins/code-reviewer/skills/triage/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * diff_content: the git diff to triage (full diff text)
+      * commit_messages: list of commit messages on the branch
+      * base_branch: base branch name (e.g., "main")
+    - config/: directory with pre-configured .claude/code-reviewer/ structure:
+      * config.md: project config with base_branch, languages, key_paths
+      * reference/style-guide.md, reference/testing-practices.md
+    - annotations.yaml: expected review unit count range (min, max),
+      expected all reference sections present, whether large-diff warning expected
+
+outputs:
+  - path: output
+    schema: |
+      Triage output in conversation text (stdout-only, no files written to disk).
+      Use {{ conversation }} in judges to access briefs.
+      Output contains:
+      - Review unit list with unit names and file assignments
+      - Unit-scoped briefs for each review unit (markdown following templates/review-brief.md):
+        * Change Overview (branch, base_branch, file count, change type)
+        * What Changed (summary paragraph)
+        * Files in This Unit (path list with change types)
+        * Commit Messages (relevant commits)
+        * Relevant Reference Doc Excerpts (scoped to this unit)
+        * Cross-Unit Context (one sentence per other unit)
+        * Full Diff for This Unit (actual diff content)
+      - Full-scope brief for adversarial reviewer (all units, all reference docs)
+      - Metadata: branch, base_branch, total files changed, unit count
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 1.5
+
+  - name: setup_guard_passes
+    description: |
+      Verifies that the setup guard passed (config.md and reference/ were found)
+      and the skill did not abort with a missing-config error.
+    check: |
+      conversation = outputs.get("conversation", "")
+      error_signals = [
+          "no project configuration found",
+          "run /code-reviewer:setup first",
+          "missing config.md",
+          "reference docs not found"
+      ]
+      found_errors = [s for s in error_signals if s.lower() in conversation.lower()]
+      if found_errors:
+          return (False, f"Setup guard failed: {found_errors}")
+      return (True, "Setup guard passed — config and reference docs found")
+
+  - name: review_units_produced
+    description: |
+      Verifies that the triage produced at least one review unit with a brief,
+      and that unit count is sensible for the diff size.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      units = re.findall(r'##\s+(?:Review\s+Unit|Unit)[\s:]+\w', conversation, re.IGNORECASE)
+      if not units:
+          units = re.findall(r'unit[_\s]\d+|review unit \d+', conversation, re.IGNORECASE)
+      unit_count = max(len(units), 1) if units else 0
+      expected_min = annotations.get("expected_unit_count_min", 1)
+      expected_max = annotations.get("expected_unit_count_max", 8)
+      if unit_count < expected_min or unit_count > expected_max:
+          return (0.5, f"Unit count {unit_count} outside expected range [{expected_min}, {expected_max}]")
+      return (True, f"Produced {unit_count} review units (expected {expected_min}-{expected_max})")
+
+  - name: brief_sections_present
+    description: |
+      Verifies each review brief contains the required sections from templates/review-brief.md.
+    check: |
+      conversation = outputs.get("conversation", "")
+      required_section_keywords = [
+          "what changed",
+          "files in this unit",
+          "commit messages",
+          "reference doc",
+          "full diff",
+      ]
+      missing = [s for s in required_section_keywords if s.lower() not in conversation.lower()]
+      if len(missing) > 1:
+          return (False, f"Briefs missing required section keywords: {missing}")
+      return (True, f"All required brief section keywords found")
+
+  - name: triage_quality
+    description: |
+      LLM evaluates whether review units are semantically sensible groupings,
+      and whether briefs are self-contained with relevant reference excerpts.
+    prompt: |
+      Evaluate the quality of this triage output.
+
+      {{ conversation }}
+
+      Assess:
+      1. Are files grouped into semantically sensible review units (by domain/language, not random)?
+      2. Does each brief include relevant reference doc excerpts (not the full guide)?
+      3. Is the "What Changed" summary accurate to the diff and commit messages?
+      4. Is the cross-unit context concise (one sentence per other unit, not full details)?
+      5. Is the full-scope brief present and comprehensive?
+
+      Score 1-5:
+      1: Random groupings, missing sections, or irrelevant excerpts
+      2: Partial grouping logic, some sections missing, excerpts too broad
+      3: Adequate grouping and briefs but some irrelevant content or gaps
+      4: Good semantic groupings, relevant excerpts, complete briefs
+      5: Excellent: semantic groupings, precise excerpts, self-contained briefs
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  setup_guard_passes:
+    min_pass_rate: 1.0
+  review_units_produced:
+    min_pass_rate: 0.9
+  brief_sections_present:
+    min_pass_rate: 0.9
+  triage_quality:
+    min_mean: 3.5

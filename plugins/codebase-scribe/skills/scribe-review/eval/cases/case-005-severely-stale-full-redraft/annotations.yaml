@@ -1,0 +1,3 @@
+expected_staleness_detected: true
+expected_stale_section_count: 3
+expected_recommendation_type: "full_redraft"

@@ -1,0 +1,99 @@
+project:
+  name: platform-web
+  description: A TypeScript monorepo containing a React single-page application (frontend) and an Express REST API (backend), developed and deployed together via npm workspaces.
+  type: monorepo
+
+languages:
+  primary: typescript
+  secondary: [javascript, bash]
+
+frameworks:
+  - name: React
+    purpose: Frontend UI library
+    version: "18.2.0"
+  - name: Express
+    purpose: Backend HTTP server framework
+    version: "4.18.2"
+  - name: Vite
+    purpose: Frontend build tool and dev server
+    version: "5.0.0"
+  - name: Jest
+    purpose: Test runner for both frontend and backend
+    version: "29.7.0"
+
+architecture:
+  pattern: Full-stack TypeScript monorepo
+  description: >
+    Two npm workspace packages: `packages/frontend` (React SPA built with Vite) and
+    `packages/backend` (Express REST API). The frontend proxies API calls to the
+    backend during development. In production the frontend is built as static assets
+    served by the backend. Shared TypeScript types live in `packages/shared`.
+  components:
+    - name: App
+      path: packages/frontend/src/App.tsx
+      type: component
+      description: Root React component that sets up React Router routes and provides the global auth context
+    - name: UserService
+      path: packages/backend/src/services/UserService.ts
+      type: service
+      description: Backend service encapsulating user CRUD operations against PostgreSQL via TypeORM
+    - name: APIRouter
+      path: packages/backend/src/router.ts
+      type: handler
+      description: Express Router that mounts all REST route handlers under /api/v1 with input validation middleware
+    - name: AuthContext
+      path: packages/frontend/src/context/AuthContext.tsx
+      type: component
+      description: React context providing authentication state (JWT token, user profile) and login/logout actions
+
+entry_points:
+  - packages/frontend/src/App.tsx
+  - packages/backend/src/index.ts
+
+build_system:
+  name: npm
+  config_file: package.json
+  commands:
+    install: npm install
+    build: npm run build
+    test: npm test
+    dev: npm run dev
+    lint: npm run lint
+    typecheck: npm run typecheck
+
+test_framework:
+  name: jest
+  test_dir: .
+  flags: --passWithNoTests --runInBand
+
+key_directories:
+  - path: packages/frontend/
+    purpose: React SPA — components, pages, hooks, and context
+  - path: packages/backend/
+    purpose: Express API — routes, services, models, and database config
+  - path: packages/shared/
+    purpose: Shared TypeScript types and utility functions used by both packages
+  - path: packages/frontend/src/components/
+    purpose: Reusable React UI components
+  - path: packages/backend/src/services/
+    purpose: Backend business logic services
+
+dependencies:
+  - name: React
+    version: "18.2.0"
+    purpose: Frontend UI library
+  - name: react-router-dom
+    version: "6.20.0"
+    purpose: Client-side routing
+  - name: Express
+    version: "4.18.2"
+    purpose: Backend HTTP framework
+  - name: typeorm
+    version: "0.3.17"
+    purpose: ORM for PostgreSQL
+  - name: jest
+    version: "29.7.0"
+    purpose: Test runner
+  - name: "@testing-library/react"
+    version: "14.1.0"
+    purpose: React component testing utilities

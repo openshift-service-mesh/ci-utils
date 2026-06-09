@@ -1,0 +1,54 @@
+review_context: |
+  ## Consolidated Review — fix/nil-pointer-in-checkout → main
+
+  ### Summary
+  This PR fixes a nil pointer dereference in the checkout flow that caused panics when
+  an anonymous session attempted to apply a promo code. 2 findings: 1 bug (fixed), 1 style
+  note (per existing guide). No improvement suggestions. No novel patterns.
+
+  ---
+
+  ### BUG Findings
+
+  **BUG-1** — `internal/checkout/promo.go:47` [CRITICAL]
+  `session.User` is dereferenced without a nil check. Anonymous sessions have `User == nil`,
+  so `session.User.ID` panics when a promo code is applied without being logged in.
+
+  ```go
+  // Before (panics for anonymous sessions):
+  if promo.IsUserEligible(session.User.ID) {
+
+  // After (safe):
+  if session.User != nil && promo.IsUserEligible(session.User.ID) {
+  ```
+
+  Status: Fixed in commit `a3f91bc`. Confirmed by engineer. Verified nil is the correct
+  check (not an empty ID) because User is a pointer type throughout this package.
+
+  ### STY Findings
+
+  **STY-1** — `internal/checkout/promo.go:12`
+  Import block mixes stdlib and external packages in a single group. Per style guide,
+  imports must be in three groups: stdlib, external, internal (each separated by blank line).
+
+  Engineer response: "Fixed — was a paste error, goimports missed it somehow."
+
+  ### IMP Findings
+  None.
+
+  ### ND Findings
+  None.
+
+  ---
+
+  ### Engineer Q&A
+  Q: Is `session.User` consistently a pointer type across all checkout flows?
+  A: Yes, `User *models.User` is nil for anonymous, non-nil for authenticated. The checkout
+     package documents this in its package-level godoc comment.
+
+  Q: Should there be a global guard at session creation time instead?
+  A: No — we intentionally support anonymous checkout flows. The nil check belongs at each
+     call site that needs a user.
+
+branch_name: "fix/nil-pointer-in-checkout"
+base_branch: "main"

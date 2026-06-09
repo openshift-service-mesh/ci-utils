@@ -1,0 +1,168 @@
+name: codebase-scribe-eval
+description: Evaluate scribe-review for identifying AGENT.md staleness and generating actionable update recommendations
+skill: codebase-scribe:scribe-review
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 900
+  max_budget_usd: 3.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: codebase-scribe-eval
+
+dataset:
+  path: plugins/codebase-scribe/skills/scribe-review/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * staleness_type: type of drift introduced (e.g., "new_component_undocumented",
+        "wrong_command", "renamed_module", "outdated_architecture", "fresh_up_to_date")
+      * expected_stale_sections: list of section names that are stale in this case
+      * expected_current_sections: list of sections that are up to date
+    - src/: current source code state (with changes that made AGENT.md stale)
+    - AGENT.md: existing AGENT.md that may be stale relative to src/
+    - .claude/scribe/inventory.yaml: pre-existing inventory (may be stale)
+    - annotations.yaml:
+      * expected_staleness_detected: boolean — if true, staleness should be found
+      * expected_stale_section_count: number of stale sections to detect (0 if fresh)
+      * expected_recommendation_type: one of "no_action", "update_sections", "full_redraft"
+
+outputs:
+  - path: output
+    schema: |
+      Staleness review report in conversation text (stdout-only, no files written to disk).
+      Use {{ conversation }} in judges to access the report.
+      Report structure:
+      - Staleness Assessment: "Up to date" or "Stale" with confidence level
+      - Stale Sections: list of section names with brief description of what's outdated
+      - Evidence: specific file/line evidence for each stale claim
+        (e.g., "src/api/handler.go defines /v2/users but AGENT.md documents /v1/users")
+      - Recommendation: one of:
+        * "No action needed" (if fresh)
+        * "Run /codebase-scribe:scribe-maintain to update: <sections>" (if partially stale)
+        * "Run /codebase-scribe:scribe-draft for a full redraft" (if severely stale)
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 2.5
+
+  - name: staleness_assessment_correct
+    description: |
+      Verifies that the staleness assessment (Stale/Up to date) matches
+      the expected_staleness_detected annotation.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_stale = annotations.get("expected_staleness_detected", True)
+      is_stale_signal = bool(re.search(r'\bstale\b|\boutdated\b|\bincorrect\b|\bwrong\b', conversation, re.IGNORECASE))
+      is_current_signal = bool(re.search(r'up to date|current|no staleness|fresh', conversation, re.IGNORECASE))
+      if expected_stale and is_current_signal and not is_stale_signal:
+          return (False, "Expected staleness detected but review said 'up to date'")
+      if not expected_stale and is_stale_signal and not is_current_signal:
+          return (False, "Expected fresh doc but review detected staleness")
+      return (True, f"Staleness assessment correct: expected_stale={expected_stale}")
+
+  - name: evidence_with_file_refs
+    description: |
+      Verifies that every stale section claim is backed by specific file/line evidence,
+      not vague assertions like "the architecture may have changed."
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_stale = annotations.get("expected_staleness_detected", True)
+      if not expected_stale:
+          return (True, "No staleness expected — no evidence needed")
+      stale_claims = re.findall(r'(stale|outdated|incorrect|wrong|missing)[^\n]{0,80}', conversation, re.IGNORECASE)
+      if not stale_claims:
+          return (True, "No explicit stale claims to validate (overall assessment covered by other judges)")
+      claims_with_evidence = sum(1 for c in stale_claims if re.search(r'`[^`]+`|src/|\.go|\.py|\.ts', c))
+      ratio = claims_with_evidence / len(stale_claims)
+      if ratio < 0.6:
+          return (False, f"Only {claims_with_evidence}/{len(stale_claims)} stale claims have file evidence")
+      return (True, f"{claims_with_evidence}/{len(stale_claims)} stale claims backed by file references")
+
+  - name: recommendation_actionable
+    description: |
+      Verifies the report ends with a specific, actionable recommendation
+      using the correct scribe command rather than vague guidance.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_rec_type = annotations.get("expected_recommendation_type", "update_sections")
+      if expected_rec_type == "no_action":
+          if "no action" in conversation.lower() or "up to date" in conversation.lower():
+              return (True, "Correct 'no action needed' recommendation")
+          return (0.5, "Expected 'no action' recommendation but not clearly stated")
+      scribe_maintain_ref = bool(re.search(r'scribe-maintain|scribe maintain', conversation, re.IGNORECASE))
+      scribe_draft_ref = bool(re.search(r'scribe-draft|scribe draft', conversation, re.IGNORECASE))
+      if expected_rec_type == "update_sections" and not scribe_maintain_ref:
+          return (False, "Expected scribe-maintain recommendation but not mentioned")
+      if expected_rec_type == "full_redraft" and not scribe_draft_ref:
+          return (False, "Expected scribe-draft (redraft) recommendation but not mentioned")
+      return (True, f"Actionable recommendation present for type '{expected_rec_type}'")
+
+  - name: review_quality
+    description: |
+      LLM evaluates whether the staleness review is accurate, evidence-backed,
+      and provides a recommendation that matches the severity of drift found.
+    prompt: |
+      Evaluate the quality of this scribe-review report.
+
+      Staleness type introduced: {{ arguments.staleness_type }}
+      Expected stale sections: {{ arguments.expected_stale_sections }}
+
+      Review report:
+      {{ conversation }}
+
+      Assess:
+      1. Did the review correctly identify the stale sections (no false positives, no missed drift)?
+      2. Is each stale claim backed by specific file/line evidence?
+      3. Is the recommendation appropriate to the severity (maintain vs full redraft)?
+      4. Does the review avoid flagging sections as stale when they're actually correct?
+      5. Is the report concise — focused on actionable findings, not exhaustive file listings?
+
+      Score 1-5:
+      1: Major errors — missed the staleness type or flagged correct sections as stale
+      2: Partial detection — some stale sections found but significant false positives
+      3: Correct detection but evidence weak or recommendation mismatched to severity
+      4: Good review: correct sections identified with file evidence, appropriate recommendation
+      5: Excellent: precise stale/current discrimination, evidence-backed, severity-matched recommendation
+
+  arguments:
+    staleness_type: "{{ arguments.staleness_type }}"
+    expected_stale_sections: "{{ arguments.expected_stale_sections }}"
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  staleness_assessment_correct:
+    min_pass_rate: 0.9
+  evidence_with_file_refs:
+    min_pass_rate: 0.85
+  recommendation_actionable:
+    min_pass_rate: 0.9
+  review_quality:
+    min_mean: 3.5

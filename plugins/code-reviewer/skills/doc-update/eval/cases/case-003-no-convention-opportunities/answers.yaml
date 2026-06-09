@@ -1,0 +1,21 @@
+# Guidance for responding to doc-update questions in this case.
+#
+# No questions are expected. This review contains only:
+#   - BUG-1: a nil pointer bug that was fixed — bugs are not convention candidates
+#   - STY-1: a violation of an existing style rule — no new rule needed, existing rule applies
+#
+# There are no IMP-N findings and no novel patterns that aren't already documented.
+# The skill should determine that no doc updates are warranted and conclude without asking
+# any approval questions.
+#
+# If a question IS asked (unexpected behavior), decline it — the comprehensive style guide
+# already covers the relevant patterns from this PR.
+
+no_questions_expected: true
+
+fallback_if_questioned:
+  action: decline
+  rationale: >
+    No convention updates are needed for this review. The bug fix (BUG-1) and style fix (STY-1)
+    are covered by existing documentation. There are no novel patterns introduced in this PR
+    that warrant new doc entries.

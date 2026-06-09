@@ -1,0 +1,109 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/metrics-middleware | Base: main | Unit: go-middleware | Files: 1 changed
+
+  ## What Changed
+  Added a Prometheus metrics middleware that records request duration and response codes.
+  The implementation is functionally correct but has some formatting issues that a linter
+  would catch (import grouping, trailing whitespace, a long line).
+
+  ## Files in This Unit
+  - `middleware/metrics.go` (added)
+
+  ## Commit Messages
+  - feat: add prometheus request metrics middleware
+
+  ## Relevant Reference Doc Excerpts
+  ### Style Guide — Naming Conventions
+  - Exported functions, types, and constants must use PascalCase.
+  - Unexported identifiers must use camelCase.
+
+  ### Style Guide — Error Handling
+  - Errors must be wrapped using `fmt.Errorf("context: %w", err)` to preserve the error chain.
+  - Sentinel errors for public API surfaces must be declared as `var ErrXxx = errors.New(...)`.
+
+  ## Full Diff for This Unit
+  ```diff
+  diff --git a/middleware/metrics.go b/middleware/metrics.go
+  new file mode 100644
+  index 0000000..3e9a7f1
+  --- /dev/null
+  +++ b/middleware/metrics.go
+  @@ -0,0 +1,58 @@
+  +package middleware
+  +
+  +import (
+  +	"net/http"
+  +	"strconv"
+  +	"time"
+  +	"github.com/prometheus/client_golang/prometheus"
+  +	"github.com/prometheus/client_golang/prometheus/promauto"
+  +)
+  +
+  +var requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+  +	Name:    "http_request_duration_seconds",
+  +	Help:    "Duration of HTTP requests in seconds.",
+  +	Buckets: prometheus.DefBuckets,
+  +}, []string{"method", "path", "status"})
+  +
+  +var requestCount = promauto.NewCounterVec(prometheus.CounterOpts{
+  +	Name: "http_requests_total",
+  +	Help: "Total number of HTTP requests.",
+  +}, []string{"method", "path", "status"})
+  +
+  +// MetricsMiddleware wraps an http.Handler and records Prometheus metrics for every request.
+  +func MetricsMiddleware(next http.Handler) http.Handler {
+  +	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  +		start := time.Now()
+  +		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+  +
+  +		next.ServeHTTP(rw, r)
+  +
+  +		duration := time.Since(start).Seconds()
+  +		status := strconv.Itoa(rw.statusCode)
+  +		labels := prometheus.Labels{"method": r.Method, "path": r.URL.Path, "status": status}
+  +		requestDuration.With(labels).Observe(duration)
+  +		requestCount.With(labels).Inc()
+  +	})
+  +}
+  +
+  +// responseWriter is a thin wrapper that captures the HTTP status code written by the handler so that it can be recorded in metrics after the handler returns.
+  +type responseWriter struct {
+  +	http.ResponseWriter
+  +	statusCode int
+  +}
+  +
+  +func (rw *responseWriter) WriteHeader(code int) {
+  +	rw.statusCode = code
+  +	rw.ResponseWriter.WriteHeader(code)
+  +}
+  ```
+
+style_guide_excerpt: |
+  ## Naming Conventions
+
+  ### Exported Identifiers
+  All exported functions, types, and constants must use PascalCase.
+  Examples: `MetricsMiddleware`, `ResponseWriter`, `DefaultBuckets`.
+
+  ### Unexported Identifiers
+  Unexported identifiers must use camelCase.
+  Examples: `responseWriter`, `statusCode`, `buildLabels`.
+
+  ## Error Handling
+
+  ### Wrapping Errors
+  Errors must be wrapped with `fmt.Errorf("context: %w", err)` to preserve the error chain.
+
+  ### Sentinel Errors
+  Public sentinel errors must be declared as package-level vars with the `Err` prefix.
+
+  ## Comments and Documentation
+
+  ### Exported Symbol Comments
+  Every exported function, type, and variable must have a GoDoc comment beginning with
+  the symbol name. Example: `// MetricsMiddleware wraps an http.Handler...`.
+
+  ### Inline Comments
+  Inline comments should explain the "why", not the "what". Avoid restating what
+  the code already clearly expresses.

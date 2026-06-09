@@ -1,0 +1,42 @@
+project:
+  name: user-service
+  description: A REST API microservice for managing user accounts
+  type: service
+
+languages:
+  primary: go
+  secondary: []
+
+frameworks:
+  - name: gin
+    purpose: HTTP routing and middleware
+
+architecture:
+  pattern: REST microservice
+  description: Single-layer REST API that handles user CRUD operations via HTTP handlers backed by a PostgreSQL database.
+  components:
+    - name: UserHandler
+      path: handlers/user.go
+      type: handler
+      description: Handles HTTP requests for user CRUD operations (ListUsers, GetUser, CreateUser, UpdateUser, DeleteUser)
+    - name: User
+      path: models/user.go
+      type: model
+      description: User domain model with ID, Email, Name, and timestamps
+
+entry_points:
+  - main.go
+
+build_system:
+  name: make
+  config_file: Makefile
+  commands:
+    build: make build
+    test: make test
+    lint: make lint
+    clean: make clean
+
+test_framework:
+  name: testing
+  test_dir: .
+  config: null

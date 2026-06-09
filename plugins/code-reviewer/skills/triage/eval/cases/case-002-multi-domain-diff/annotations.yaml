@@ -1,0 +1,3 @@
+expected_unit_count_min: 3
+expected_unit_count_max: 5
+expected_setup_guard_pass: true

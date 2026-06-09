@@ -1,0 +1,6 @@
+change_type: "new_dependency"
+sections_expected_to_change:
+  - "Architecture"
+  - "Development Guide"
+sections_expected_unchanged:
+  - "Key Conventions"

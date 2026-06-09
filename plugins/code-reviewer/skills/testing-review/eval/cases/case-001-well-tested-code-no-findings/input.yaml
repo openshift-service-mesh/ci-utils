@@ -1,0 +1,196 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/user-service-crud, Base: main, Files: 4 files changed
+
+  ## Commit Messages
+  - feat: add GetUser and CreateUser methods to UserService
+
+  ## Files Changed
+  - internal/user/service.go (modified)
+  - internal/user/service_test.go (modified)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/user/service.go b/internal/user/service.go
+  index a1b2c3d..e4f5a6b 100644
+  --- a/internal/user/service.go
+  +++ b/internal/user/service.go
+  @@ -1,16 +1,62 @@
+   package user
+
+   import (
+  +	"context"
+  +	"errors"
+   	"fmt"
+   )
+
+  +// ErrNotFound is returned when a user does not exist.
+  +var ErrNotFound = errors.New("user not found")
+
+  +// ErrInvalidInput is returned when input fails validation.
+  +var ErrInvalidInput = errors.New("invalid input")
+
+  +// User holds the data for a single user record.
+   type User struct {
+   	ID    string
+   	Name  string
+   	Email string
+   }
+
+  +// Repository defines the persistence interface used by UserService.
+   type Repository interface {
+  +	FindByID(ctx context.Context, id string) (*User, error)
+  +	Save(ctx context.Context, u *User) error
+   }
+
+  +// UserService provides business-logic operations on users.
+   type UserService struct {
+   	repo Repository
+   }
+
+  +// NewUserService constructs a UserService backed by the given repository.
+   func NewUserService(repo Repository) *UserService {
+   	return &UserService{repo: repo}
+   }
+
+  +// GetUser fetches a user by ID. Returns ErrNotFound when the ID does not exist.
+  +func (s *UserService) GetUser(ctx context.Context, id string) (*User, error) {
+  +	if id == "" {
+  +		return nil, fmt.Errorf("%w: id must not be empty", ErrInvalidInput)
+  +	}
+  +	u, err := s.repo.FindByID(ctx, id)
+  +	if err != nil {
+  +		return nil, err
+  +	}
+  +	if u == nil {
+  +		return nil, ErrNotFound
+  +	}
+  +	return u, nil
+  +}
+  +
+  +// CreateUser persists a new user record. Returns ErrInvalidInput for bad data.
+  +func (s *UserService) CreateUser(ctx context.Context, u *User) error {
+  +	if u == nil {
+  +		return fmt.Errorf("%w: user must not be nil", ErrInvalidInput)
+  +	}
+  +	if u.Email == "" {
+  +		return fmt.Errorf("%w: email must not be empty", ErrInvalidInput)
+  +	}
+  +	return s.repo.Save(ctx, u)
+  +}
+
+  diff --git a/internal/user/service_test.go b/internal/user/service_test.go
+  index f1a2b3c..d4e5f6a 100644
+  --- a/internal/user/service_test.go
+  +++ b/internal/user/service_test.go
+  @@ -1,6 +1,120 @@
+   package user_test
+
+   import (
+  +	"context"
+  +	"errors"
+  +	"testing"
+  +
+  +	"github.com/stretchr/testify/assert"
+  +	"github.com/stretchr/testify/require"
+   )
+
+  +type mockRepo struct {
+  +	findByIDFunc func(ctx context.Context, id string) (*User, error)
+  +	saveFunc     func(ctx context.Context, u *User) error
+  +}
+  +
+  +func (m *mockRepo) FindByID(ctx context.Context, id string) (*User, error) {
+  +	return m.findByIDFunc(ctx, id)
+  +}
+  +
+  +func (m *mockRepo) Save(ctx context.Context, u *User) error {
+  +	return m.saveFunc(ctx, u)
+  +}
+  +
+  +func TestGetUser_Success(t *testing.T) {
+  +	want := &User{ID: "abc", Name: "Alice", Email: "alice@example.com"}
+  +	repo := &mockRepo{
+  +		findByIDFunc: func(_ context.Context, id string) (*User, error) {
+  +			assert.Equal(t, "abc", id)
+  +			return want, nil
+  +		},
+  +	}
+  +	svc := NewUserService(repo)
+  +
+  +	got, err := svc.GetUser(context.Background(), "abc")
+  +
+  +	require.NoError(t, err)
+  +	assert.Equal(t, want, got)
+  +}
+  +
+  +func TestGetUser_NotFound(t *testing.T) {
+  +	repo := &mockRepo{
+  +		findByIDFunc: func(_ context.Context, _ string) (*User, error) {
+  +			return nil, nil
+  +		},
+  +	}
+  +	svc := NewUserService(repo)
+  +
+  +	_, err := svc.GetUser(context.Background(), "missing-id")
+  +
+  +	require.Error(t, err)
+  +	assert.ErrorIs(t, err, ErrNotFound)
+  +}
+  +
+  +func TestCreateUser_Success(t *testing.T) {
+  +	saved := false
+  +	repo := &mockRepo{
+  +		saveFunc: func(_ context.Context, u *User) error {
+  +			saved = true
+  +			assert.Equal(t, "bob@example.com", u.Email)
+  +			return nil
+  +		},
+  +	}
+  +	svc := NewUserService(repo)
+  +
+  +	err := svc.CreateUser(context.Background(), &User{Name: "Bob", Email: "bob@example.com"})
+  +
+  +	require.NoError(t, err)
+  +	assert.True(t, saved, "expected repo.Save to be called")
+  +}
+  +
+  +func TestCreateUser_InvalidInput(t *testing.T) {
+  +	repo := &mockRepo{}
+  +	svc := NewUserService(repo)
+  +
+  +	tests := []struct {
+  +		name string
+  +		user *User
+  +	}{
+  +		{"nil user", nil},
+  +		{"empty email", &User{Name: "Bob", Email: ""}},
+  +	}
+  +
+  +	for _, tc := range tests {
+  +		t.Run(tc.name, func(t *testing.T) {
+  +			err := svc.CreateUser(context.Background(), tc.user)
+  +			require.Error(t, err)
+  +			assert.ErrorIs(t, err, ErrInvalidInput)
+  +		})
+  +	}
+  +}
+  ```
+
+testing_practices_excerpt: |
+  ## Table-Driven Tests
+  Prefer table-driven tests when testing multiple similar scenarios. Use a `tests` slice of
+  anonymous structs and range over them with `t.Run(tc.name, ...)`.
+
+  ## Assertions
+  Use `github.com/stretchr/testify/assert` for non-fatal assertions and
+  `github.com/stretchr/testify/require` for fatal ones (e.g., error checks before
+  accessing a returned value).
+
+  ## Test Naming
+  Follow the pattern `TestFuncName_Scenario` (e.g., `TestGetUser_NotFound`).
+  Each distinct code path should have its own named scenario.
+
+  ## One Test Per Code Path
+  Every documented error return value and every significant branch in production code
+  must have at least one corresponding test case.

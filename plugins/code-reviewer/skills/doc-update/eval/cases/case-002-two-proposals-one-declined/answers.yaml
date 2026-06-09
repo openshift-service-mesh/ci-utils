@@ -1,0 +1,31 @@
+# Guidance for responding to doc-update questions in this case.
+#
+# Two potential doc updates may be proposed based on IMP-1 and IMP-2.
+# They must be handled differently:
+#
+# IMP-1 (testify/assert adoption):
+#   APPROVE. The engineer explicitly confirmed the project switched to testify ~6 months ago.
+#   The current testing-practices.md still describes raw t.Errorf/t.Fatalf, which is outdated.
+#   Any proposed addition documenting testify/assert as the standard assertion library should
+#   be approved. If the proposal also mentions the assert (non-fatal) vs require (fatal) distinction,
+#   that is accurate and should be approved as part of the same convention.
+#
+# IMP-2 (3-space indentation):
+#   DECLINE. The engineer clarified this is a display artifact — the file actually uses tabs
+#   as required by gofmt. There is no real indentation convention to add; the existing gofmt
+#   rule already covers it. Do not add any indentation convention to any doc.
+
+per_change_guidance:
+  - pattern: "testify|assert|require|assertion library"
+    action: approve
+    rationale: >
+      Engineer confirmed testify is the project standard for the past 6 months.
+      The testing-practices.md doc is outdated on this point. Approve any proposed
+      addition that describes testify/assert as the preferred assertion library,
+      including the assert-vs-require distinction if mentioned.
+
+  - pattern: "3-space|three-space|indentation|spaces vs tabs|tab width"
+    action: decline
+    rationale: >
+      The engineer confirmed this is a display artifact — actual indentation uses tabs.
+      No convention change is warranted. The existing gofmt rule covers this. Decline.

@@ -1,0 +1,6 @@
+change_type: "no_change"
+sections_expected_to_change: []
+sections_expected_unchanged:
+  - "Project Overview"
+  - "Architecture"
+  - "Development Guide"
