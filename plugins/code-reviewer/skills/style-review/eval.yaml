@@ -1,0 +1,156 @@
+name: code-reviewer-eval
+description: Evaluate style review findings for convention accuracy and actionability
+skill: code-reviewer:style-review
+
+execution:
+  mode: case
+  arguments: "{unit_brief}"
+  timeout: 900
+  max_budget_usd: 3.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: code-reviewer-eval
+
+dataset:
+  path: plugins/code-reviewer/skills/style-review/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * unit_brief: markdown text — the unit-scoped review brief containing:
+        changed files with diffs, commit messages, relevant style-guide excerpts,
+        and cross-unit context summary
+      * style_guide_excerpt: relevant sections from style-guide.md for this case's language/patterns
+    - annotations.yaml: expected STY-N finding count, expected IMP-N count, expected severity levels,
+      whether any personal preferences (not in style guide) should be flagged
+
+outputs:
+  - path: output
+    schema: |
+      Style review report in conversation text (stdout-only, no files written to disk).
+      Use {{ conversation }} in judges to access the report.
+      Report structure (following templates/phase-report.md):
+      - Heading with "Style Review Report" and review unit name
+      - Strengths section with file:line references
+      - Issues by severity (Critical/Important/Minor) with STY-N prefixed findings
+      - Each STY-N finding: ID, file:line reference, style guide citation,
+        description of what's wrong, how to fix
+      - IMP-N findings for undocumented patterns worth adding to the style guide
+      - Open Questions for genuinely uncertain items
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 2.5
+
+  - name: style_guide_citations
+    description: |
+      Verifies every STY-N finding cites a section of the style guide.
+      Style violations without guide citations are personal preferences, not findings.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      sty_findings = re.findall(r'\*\*STY-\d+\*\*[^\n]*', conversation)
+      if not sty_findings:
+          annotations = outputs.get("annotations", {})
+          if annotations.get("expected_sty_count", 0) == 0:
+              return (True, "No STY findings expected and none found")
+          return (True, "No STY findings found (may indicate clean code)")
+      missing_citation = []
+      for f in sty_findings:
+          has_guide_ref = "style-guide" in f.lower() or "§" in f or "per " in f.lower()
+          if not has_guide_ref:
+              missing_citation.append(f[:70])
+      if missing_citation:
+          return (False, f"{len(missing_citation)} STY findings lack style guide citation: {missing_citation[:2]}")
+      return (True, f"All {len(sty_findings)} STY findings cite the style guide")
+
+  - name: finding_file_line_refs
+    description: |
+      Checks that every STY-N and IMP-N finding includes a file:line reference.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      all_findings = re.findall(r'\*\*(STY|IMP)-\d+\*\*[^*\n]*', conversation)
+      if not all_findings:
+          return (True, "No findings to validate")
+      missing = [f[:60] for f in all_findings if not re.search(r'`[^`]+:\d+`', f)]
+      if missing:
+          return (False, f"Findings missing file:line references: {missing[:3]}")
+      return (True, f"All {len(all_findings)} findings have file:line references")
+
+  - name: no_linter_scope_creep
+    description: |
+      Detects when style-review flags linter-enforced concerns (import ordering,
+      indentation, bracket placement) that should not be in the style review phase.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      linter_patterns = [
+          r'import\s+order',
+          r'trailing\s+whitespace',
+          r'indent(?:ation)?\s+(?:level|size|width)',
+          r'bracket\s+placement',
+          r'tab\s+vs\s+space',
+          r'line\s+length\s+exceeds',
+      ]
+      found = [p for p in linter_patterns if re.search(p, conversation, re.IGNORECASE)]
+      if found:
+          return (False, f"Potential linter-scope findings detected: {found}")
+      return (True, "No linter-domain scope creep detected")
+
+  - name: style_enforcement_quality
+    description: |
+      LLM evaluates whether style findings are based on documented conventions,
+      properly cite the style guide, and avoid personal preferences or linter concerns.
+    prompt: |
+      Evaluate the quality of this style review report.
+
+      Style guide excerpt provided to the skill:
+      {{ arguments.style_guide_excerpt }}
+
+      Style review report:
+      {{ conversation }}
+
+      Assess:
+      1. Do STY-N findings reference specific sections of the style guide (not personal preferences)?
+      2. Are IMP-N findings for patterns genuinely not in the style guide?
+      3. Is severity (Critical/Important/Minor) appropriate? Minor for isolated breaks, not Critical.
+      4. Are suggested fixes specific and actionable (e.g., "rename to GetUser" not "improve naming")?
+      5. Were linter-domain concerns (import order, whitespace, indentation) avoided?
+
+      Score 1-5:
+      1: Mostly personal preferences flagged as violations; no guide citations
+      2: Some valid findings but many without guide basis or wrong severity
+      3: Mostly documented conventions but some scope creep or weak citations
+      4: Good style review; documented violations, appropriate severity; minor gaps
+      5: Excellent: all findings cite the guide, correct severity, actionable fixes
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  style_guide_citations:
+    min_pass_rate: 0.9
+  finding_file_line_refs:
+    min_pass_rate: 0.9
+  no_linter_scope_creep:
+    min_pass_rate: 0.9
+  style_enforcement_quality:
+    min_mean: 3.5

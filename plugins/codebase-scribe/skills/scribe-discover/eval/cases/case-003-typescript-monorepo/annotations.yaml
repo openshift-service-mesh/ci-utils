@@ -1,0 +1,6 @@
+expected_component_count: 3
+expected_entry_points:
+  - packages/frontend/src/App.tsx
+  - packages/backend/src/index.ts
+expected_test_framework: "jest"
+expected_build_system: "npm"

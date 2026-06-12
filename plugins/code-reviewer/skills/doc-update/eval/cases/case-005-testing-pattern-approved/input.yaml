@@ -1,0 +1,78 @@
+review_context: |
+  ## Consolidated Review — feature/user-search → main
+
+  ### Summary
+  This PR adds full-text user search to the admin API, including filtering by role, status,
+  and date range. 2 findings: 0 bugs, 0 security issues, 1 style note, 1 improvement suggestion.
+
+  ---
+
+  ### BUG Findings
+  None.
+
+  ### STY Findings
+
+  **STY-1** — `internal/search/query_test.go:88`
+  The test function name `TestBuildQuery` doesn't follow the `TestFunctionName_Scenario`
+  convention — missing the scenario suffix. Should be `TestBuildQuery_WithRoleFilter`,
+  `TestBuildQuery_EmptyInput`, etc. per the testing conventions.
+
+  Engineer response: "Good catch — renaming all five cases to include scenario suffixes now."
+
+  ### IMP Findings
+
+  **IMP-1** — `internal/search/query_test.go`, `internal/search/filter_test.go`,
+               `internal/search/pagination_test.go`
+  All three test files in this PR use the same table-driven test structure. In each file,
+  test cases are defined as an anonymous struct slice named `tests`, and the loop always
+  calls `t.Run(tc.name, ...)`:
+
+  ```go
+  tests := []struct {
+      name     string
+      input    SearchQuery
+      expected []string
+  }{
+      {
+          name:     "empty query returns all users",
+          input:    SearchQuery{},
+          expected: allUserIDs,
+      },
+      // ...
+  }
+  for _, tc := range tests {
+      tc := tc // capture range variable
+      t.Run(tc.name, func(t *testing.T) {
+          result := buildQuery(tc.input)
+          assert.Equal(t, tc.expected, result)
+      })
+  }
+  ```
+
+  The `tc := tc` capture pattern and the `name/input/expected` field names are consistent
+  across all three files. This is clearly the team's established approach for table-driven
+  tests, but testing-practices.md does not document the struct shape or the `tc := tc`
+  capture idiom.
+
+  Engineer response: "Yes, that's our standard table-driven structure. The `tc := tc`
+  capture was especially important before Go 1.22 fixed loop variable capture — we still
+  use it for clarity even on newer Go versions. The field order is always: name, then
+  inputs, then expected outputs. We've been doing it this way for about a year."
+
+  Reviewer note: The pattern is clearly established (1 year, multiple packages) and the
+  engineer gave precise rules. Worth documenting: struct field order (name, inputs, expected),
+  the `tc := tc` capture line, and the `t.Run(tc.name, ...)` call structure. The existing
+  testing-practices.md mentions table-driven tests are used but gives no structural guidance.
+
+  ---
+
+  ### Engineer Q&A
+  Q: Is the slice always named `tests` or can it be something else?
+  A: We always name it `tests` — it's part of the convention. Keeps it easy to scan.
+
+  Q: What if a test case needs multiple input fields (not just one)?
+  A: Add more fields to the struct — same pattern, just a larger struct. The shape doesn't
+     change, just grows. Name fields clearly with what they represent.
+
+branch_name: "feature/user-search"
+base_branch: "main"

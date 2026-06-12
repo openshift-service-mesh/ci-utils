@@ -1,0 +1,177 @@
+name: code-reviewer-eval
+description: Evaluate headless-setup skill for generating code reviewer reference docs without user interaction
+skill: code-reviewer:headless-setup
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 1200
+  max_budget_usd: 4.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: code-reviewer-eval
+
+dataset:
+  path: plugins/code-reviewer/skills/headless-setup/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * project_type: one of "go", "python", "typescript", "mixed" — used to provision
+        the right sample code files in the workspace
+    - src/: sample source code files appropriate for the project_type
+      (e.g., go: *.go files with functions and tests; typescript: *.ts files)
+    - existing_docs/: optional pre-existing documentation (AGENTS.md, STYLE_GUIDE.md, CONTRIBUTING.md)
+      that the skill should reference rather than duplicate
+    - annotations.yaml: expected reference docs to be generated, expected languages detected,
+      expected base_branch value, whether AGENTS.md should be created
+
+outputs:
+  - path: output
+    schema: |
+      Reference docs written in-place to .claude/code-reviewer/reference/ directory.
+      Use outputs["modified_files"] and outputs["files"] to access generated files.
+      Generated files:
+      - .claude/code-reviewer/reference/style-guide.md: always generated
+        YAML frontmatter: format_version: 1
+        Sections: ## Conventions (with naming/imports/formatting/file organization), ## Changelog
+      - .claude/code-reviewer/reference/testing-practices.md: always generated
+        Same frontmatter structure with testing framework conventions
+      - .claude/code-reviewer/reference/security-posture.md: generated only if security code found
+      - .claude/code-reviewer/reference/api-conventions.md: generated only if API definitions found
+      - .claude/code-reviewer/config.md: project configuration
+        YAML frontmatter: base_branch, languages (list), key_paths (optional), skip_phases (list)
+        Markdown body: project context summary
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 3.5
+
+  - name: reference_docs_exist
+    description: |
+      Verifies that required reference docs were created with correct YAML frontmatter
+      and mandatory sections (## Conventions, ## Changelog).
+    check: |
+      import yaml, re
+      files = outputs.get("files", {})
+      required_docs = ["style-guide.md", "testing-practices.md"]
+      issues = []
+      for doc in required_docs:
+          matching = [k for k in files if k.endswith(f"reference/{doc}")]
+          if not matching:
+              issues.append(f"Missing: {doc}")
+              continue
+          content = files[matching[0]]
+          if "format_version: 1" not in content:
+              issues.append(f"{doc}: missing format_version: 1 in frontmatter")
+          if "## Conventions" not in content:
+              issues.append(f"{doc}: missing ## Conventions section")
+          if "## Changelog" not in content:
+              issues.append(f"{doc}: missing ## Changelog section")
+          if "headless-setup" not in content:
+              issues.append(f"{doc}: changelog missing headless-setup trigger reference")
+      if issues:
+          return (False, "; ".join(issues))
+      return (True, f"All required reference docs present with valid structure")
+
+  - name: config_md_valid
+    description: |
+      Validates that .claude/code-reviewer/config.md exists with required YAML frontmatter
+      fields: base_branch, languages (list), skip_phases (list), and non-empty markdown body.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      config_keys = [k for k in files if k.endswith("code-reviewer/config.md")]
+      if not config_keys:
+          return (False, "config.md not found in .claude/code-reviewer/")
+      content = files[config_keys[0]]
+      parts = content.split("---", 2)
+      if len(parts) < 3:
+          return (False, "config.md missing YAML frontmatter delimiters")
+      try:
+          config = yaml.safe_load(parts[1])
+      except yaml.YAMLError as e:
+          return (False, f"config.md YAML parse error: {e}")
+      if not config.get("base_branch"):
+          return (False, "config.md missing or empty base_branch")
+      if not isinstance(config.get("languages"), list) or len(config["languages"]) == 0:
+          return (False, "config.md languages must be a non-empty list")
+      if "skip_phases" not in config:
+          return (False, "config.md missing skip_phases field")
+      md_body = parts[2].strip()
+      if len(md_body) < 20:
+          return (False, f"config.md markdown body too short ({len(md_body)} chars)")
+      return (True, f"config.md valid: base_branch={config['base_branch']}, languages={config['languages']}")
+
+  - name: no_user_prompts
+    description: |
+      Verifies that headless-setup did not prompt the user for input during execution.
+      This skill must run without any AskUserQuestion calls.
+    check: |
+      conversation = outputs.get("conversation", "")
+      prompt_patterns = [
+          "would you like", "should i", "do you want", "please choose",
+          "can you confirm", "which option"
+      ]
+      found = [p for p in prompt_patterns if p in conversation.lower()]
+      if found:
+          return (False, f"User prompts detected in headless execution: {found}")
+      tool_calls = outputs.get("tool_calls", [])
+      user_question_calls = [t for t in tool_calls if "AskUserQuestion" in str(t)]
+      if user_question_calls:
+          return (False, f"AskUserQuestion called {len(user_question_calls)} times in headless mode")
+      return (True, "No user prompts detected — correctly headless")
+
+  - name: convention_accuracy
+    description: |
+      LLM evaluates whether discovered conventions accurately reflect the actual code
+      patterns in the workspace sample files. Conventions must be specific and grounded in code.
+    prompt: |
+      Evaluate the quality of the discovered project conventions.
+
+      Generated reference documentation:
+      {{ outputs }}
+
+      Assess:
+      1. Are naming conventions specific (e.g., "functions use camelCase") and consistent with sample code?
+      2. Are testing practices conventions based on actual test file patterns (framework, file naming)?
+      3. Are all conventions documented at the right abstraction (specific enough to guide review)?
+      4. Is the project context summary in config.md accurate and useful?
+      5. Were security/API docs generated only when relevant code patterns were found?
+
+      Score 1-5:
+      1: Conventions are generic, not derived from actual code
+      2: Some conventions are code-derived but many are generic filler
+      3: Mostly derived from code but lacking specificity in key areas
+      4: Good conventions, well-organized, mostly code-accurate
+      5: Excellent: specific, code-grounded conventions with clear organization
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  reference_docs_exist:
+    min_pass_rate: 1.0
+  config_md_valid:
+    min_pass_rate: 1.0
+  no_user_prompts:
+    min_pass_rate: 1.0
+  convention_accuracy:
+    min_mean: 3.5

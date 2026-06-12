@@ -1,0 +1,5 @@
+expected_sections_updated:
+  - "Architecture"
+expected_sections_preserved:
+  - "Development Guide"
+expected_no_update: false

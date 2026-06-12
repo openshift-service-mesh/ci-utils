@@ -1,0 +1,37 @@
+# Guidance for responding to doc-update questions in this case.
+#
+# The skill should propose adding a convention for action endpoints to api-conventions.md.
+# The engineer confirmed the pattern is intentional and architecturally deliberate.
+#
+# Approve the proposed addition. The convention covers:
+#   - URL pattern: POST /api/v1/{resources}/:id/{action}
+#   - Action name format: lowercase, singular, no hyphens
+#   - Always POST, even for idempotent actions
+#   - All action endpoints require authentication
+#
+# Note: The engineer explicitly said NOT to add a convention about action endpoint response
+# bodies (204 vs returning the resource) — that is not standardized yet. If the skill
+# proposes a convention about response bodies for action endpoints, decline that specific
+# sub-proposal while approving the rest.
+#
+# One question per convention: if the skill asks about the URL pattern and the authentication
+# requirement separately, approve both. If they are bundled in one question, that is acceptable
+# since they are all part of the same "action endpoint" convention topic.
+
+approve_all: true
+
+per_change_guidance:
+  - pattern: "action endpoint|POST.*:id|resource action|verb.*last segment|cancel|fulfill|void"
+    action: approve
+    rationale: >
+      Engineer confirmed this is the deliberate pattern for non-CRUD actions.
+      It was discussed in an architecture meeting and has been applied consistently
+      across three resource types. Approve any proposed convention that captures the
+      URL structure (POST /api/v1/{resources}/:id/{action}) and the action name rules
+      (lowercase, singular, no hyphens).
+
+  - pattern: "response body|204|return.*updated|action.*response"
+    action: decline
+    rationale: >
+      The engineer explicitly said this is not yet standardized. Do not add a convention
+      for action endpoint response bodies. Decline if proposed separately.

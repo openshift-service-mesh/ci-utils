@@ -1,0 +1,11 @@
+expected_sections:
+  - Project Overview
+  - Development Guide
+
+expected_min_length: 500
+
+expected_mentions:
+  - make
+  - docker
+  - HealthHandler
+  - deploy

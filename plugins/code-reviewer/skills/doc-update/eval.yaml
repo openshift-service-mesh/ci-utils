@@ -1,0 +1,164 @@
+name: code-reviewer-eval
+description: Evaluate doc-update skill for proposing and applying reference documentation changes post-review
+skill: code-reviewer:doc-update
+
+execution:
+  mode: case
+  arguments: "{review_context}"
+  timeout: 1200
+  max_budget_usd: 3.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: code-reviewer-eval
+
+dataset:
+  path: plugins/code-reviewer/skills/doc-update/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * review_context: text of consolidated review findings and engineer responses
+        that triggered potential doc update opportunities
+      * branch_name: git branch being reviewed
+      * base_branch: base branch (e.g., "main")
+    - reference_docs/: directory containing pre-existing reference doc files:
+      * style-guide.md, testing-practices.md, or api-conventions.md with existing conventions
+    - answers.yaml: how to respond to proposed doc update questions
+      (approve/decline/refine decisions for each proposed change)
+    - annotations.yaml: expected number of doc changes proposed, expected files modified,
+      expected changelog entries added
+
+inputs:
+  tools:
+    - match: AskUserQuestion — doc-update asks the engineer to approve, decline, or refine each proposed convention change, one question per convention
+      prompt: |
+        Use the answers.yaml file to decide how to respond to each doc-update question.
+        answers.yaml contains approve/decline/refine guidance for each proposed change.
+        Default to "approve" for proposed changes unless answers.yaml says otherwise.
+
+outputs:
+  - path: output
+    schema: |
+      The skill modifies reference doc files in-place at .claude/code-reviewer/reference/.
+      No output directory is created; use outputs["modified_files"] to access changes.
+      Modified files (if any changes were approved):
+      - .claude/code-reviewer/reference/style-guide.md (if style conventions updated)
+      - .claude/code-reviewer/reference/testing-practices.md (if test patterns updated)
+      - .claude/code-reviewer/reference/api-conventions.md (if API conventions updated)
+      Each modified file has a ## Changelog table with entries: Date | Change | Trigger
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 2.5
+
+  - name: changelog_entries_added
+    description: |
+      If any reference docs were modified, verifies changelog entries were appended.
+      Each modification must be accompanied by a changelog entry with Date/Change/Trigger columns.
+    check: |
+      modified = outputs.get("modified_files", {})
+      if not modified:
+          conversation = outputs.get("conversation", "")
+          no_update_signals = ["no convention updates", "no updates needed", "declined all"]
+          if any(s in conversation.lower() for s in no_update_signals):
+              return (True, "No doc updates proposed or all declined — correct behavior")
+          return (True, "No files modified (all proposed changes may have been declined)")
+      issues = []
+      for fname, content in modified.items():
+          if "reference" not in fname:
+              continue
+          if "## Changelog" not in content:
+              issues.append(f"{fname}: missing ## Changelog section")
+          elif "| Date | Change | Trigger |" not in content:
+              issues.append(f"{fname}: Changelog table missing required headers")
+      if issues:
+          return (False, "; ".join(issues))
+      return (True, f"Changelog entries verified in {len(modified)} modified files")
+
+  - name: no_wholesale_rewrites
+    description: |
+      Verifies that doc-update makes targeted changes only and doesn't rewrite
+      entire documents or change structure/formatting wholesale.
+    check: |
+      modified = outputs.get("modified_files", {})
+      for fname, content in modified.items():
+          if "reference" not in fname:
+              continue
+          if len(content.strip()) < 50:
+              return (False, f"{fname}: appears nearly empty after modification (rewrite risk)")
+          if "## Conventions" not in content:
+              return (False, f"{fname}: missing ## Conventions section (may have been rewritten)")
+      return (True, "Reference docs preserve required sections — no wholesale rewrites detected")
+
+  - name: one_change_per_question
+    description: |
+      Evaluates whether doc-update asked questions individually (one per convention)
+      rather than batching multiple proposed changes into a single question.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      multi_convention_questions = re.findall(
+          r'(should i update|should we update|would you like to update)[^?]*(?:and|also)[^?]*\?',
+          conversation, re.IGNORECASE
+      )
+      if multi_convention_questions:
+          return (False, f"Found {len(multi_convention_questions)} questions with multiple conventions batched")
+      return (True, "Questions appear to be asked one convention at a time")
+
+  - name: update_quality
+    description: |
+      LLM evaluates whether proposed doc changes are well-phrased, at the right abstraction level,
+      and whether approved changes were correctly integrated into reference docs.
+    prompt: |
+      Evaluate the doc-update skill's output.
+
+      Modified reference docs (if any):
+      {{ outputs }}
+
+      Conversation (proposed changes and engineer responses):
+      {{ conversation }}
+
+      Assess:
+      1. Were proposed changes phrased clearly (specific convention, not vague)?
+      2. Were approved changes integrated naturally into the reference doc (not just appended)?
+      3. Does each modified doc still have proper structure (## Conventions, ## Changelog)?
+      4. Were questions asked one at a time (one convention per question)?
+      5. Were declined changes correctly not applied?
+
+      Score 1-5:
+      1: Major errors — unauthorized changes, broken doc structure, or unapproved edits
+      2: Some issues — poor phrasing, batched questions, or structure damaged
+      3: Adequate — changes applied but phrasing awkward or structure slightly off
+      4: Good — clear questions, properly integrated changes, correct structure
+      5: Excellent — precise questions, natural integration, perfect changelog entries
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  changelog_entries_added:
+    min_pass_rate: 0.95
+  no_wholesale_rewrites:
+    min_pass_rate: 1.0
+  one_change_per_question:
+    min_pass_rate: 0.9
+  update_quality:
+    min_mean: 3.5

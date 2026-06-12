@@ -1,0 +1,25 @@
+diff_content: |
+  diff --git a/handlers/health.go b/handlers/health.go
+  index 0000000..e3b1c7a 100644
+  --- /dev/null
+  +++ b/handlers/health.go
+  @@ -0,0 +1,14 @@
+  +package handlers
+  +
+  +import (
+  +	"net/http"
+  +
+  +	"github.com/gin-gonic/gin"
+  +)
+  +
+  +// HealthCheck returns a 200 OK with service status.
+  +func HealthCheck(c *gin.Context) {
+  +	c.JSON(http.StatusOK, gin.H{
+  +		"status": "ok",
+  +	})
+  +}
+
+commit_messages:
+  - "feat: add health check endpoint"
+
+base_branch: "main"

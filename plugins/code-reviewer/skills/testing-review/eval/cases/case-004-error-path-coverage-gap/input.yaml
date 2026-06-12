@@ -1,0 +1,151 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/user-update, Base: main, Files: 2 files changed
+
+  ## Commit Messages
+  - feat: add UpdateUser method with validation and persistence
+
+  ## Files Changed
+  - internal/user/service.go (modified)
+  - internal/user/service_test.go (modified)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/user/service.go b/internal/user/service.go
+  index c3d4e5f..a6b7c8d 100644
+  --- a/internal/user/service.go
+  +++ b/internal/user/service.go
+  @@ -1,30 +1,60 @@
+   package user
+
+   import (
+  +	"context"
+  +	"errors"
+   	"fmt"
+   )
+
+  +// ErrNotFound is returned when a user does not exist in the repository.
+   var ErrNotFound = errors.New("user not found")
+
+  +// ErrInvalidInput is returned when user data fails validation.
+   var ErrInvalidInput = errors.New("invalid input")
+
+   type User struct {
+   	ID    string
+   	Name  string
+   	Email string
+   }
+
+   type Repository interface {
+  +	FindByID(ctx context.Context, id string) (*User, error)
+   	Save(ctx context.Context, u *User) error
+   }
+
+   type UserService struct {
+   	repo Repository
+   }
+
+   func NewUserService(repo Repository) *UserService {
+   	return &UserService{repo: repo}
+   }
+
+  +// UpdateUser fetches the existing user record, applies the provided fields,
+  +// and persists the result. Returns ErrNotFound if the ID does not exist,
+  +// ErrInvalidInput if the new email is empty, or a wrapped repo error on
+  +// persistence failure.
+  +func (s *UserService) UpdateUser(ctx context.Context, id string, name, email string) (*User, error) {
+  +	if id == "" {
+  +		return nil, fmt.Errorf("%w: id must not be empty", ErrInvalidInput)
+  +	}
+  +	existing, err := s.repo.FindByID(ctx, id)
+  +	if err != nil {
+  +		return nil, fmt.Errorf("find user: %w", err)
+  +	}
+  +	if existing == nil {
+  +		return nil, ErrNotFound
+  +	}
+  +	if email == "" {
+  +		return nil, fmt.Errorf("%w: email must not be empty", ErrInvalidInput)
+  +	}
+  +	existing.Name = name
+  +	existing.Email = email
+  +	if err := s.repo.Save(ctx, existing); err != nil {
+  +		return nil, fmt.Errorf("save user: %w", err)
+  +	}
+  +	return existing, nil
+  +}
+
+  diff --git a/internal/user/service_test.go b/internal/user/service_test.go
+  index d4e5f6a..b7c8d9e 100644
+  --- a/internal/user/service_test.go
+  +++ b/internal/user/service_test.go
+  @@ -1,10 +1,52 @@
+   package user_test
+
+   import (
+  +	"context"
+  +	"testing"
+  +
+  +	"github.com/stretchr/testify/assert"
+  +	"github.com/stretchr/testify/require"
+   )
+
+  +type mockRepo struct {
+  +	findByIDFunc func(ctx context.Context, id string) (*User, error)
+  +	saveFunc     func(ctx context.Context, u *User) error
+  +}
+  +
+  +func (m *mockRepo) FindByID(ctx context.Context, id string) (*User, error) {
+  +	if m.findByIDFunc != nil {
+  +		return m.findByIDFunc(ctx, id)
+  +	}
+  +	return nil, nil
+  +}
+  +
+  +func (m *mockRepo) Save(ctx context.Context, u *User) error {
+  +	if m.saveFunc != nil {
+  +		return m.saveFunc(ctx, u)
+  +	}
+  +	return nil
+  +}
+  +
+  +func TestUpdateUser_Success(t *testing.T) {
+  +	original := &User{ID: "u1", Name: "Alice", Email: "alice@example.com"}
+  +	repo := &mockRepo{
+  +		findByIDFunc: func(_ context.Context, id string) (*User, error) {
+  +			assert.Equal(t, "u1", id)
+  +			return original, nil
+  +		},
+  +		saveFunc: func(_ context.Context, u *User) error {
+  +			assert.Equal(t, "Alice Updated", u.Name)
+  +			assert.Equal(t, "alice2@example.com", u.Email)
+  +			return nil
+  +		},
+  +	}
+  +	svc := NewUserService(repo)
+  +
+  +	got, err := svc.UpdateUser(context.Background(), "u1", "Alice Updated", "alice2@example.com")
+  +
+  +	require.NoError(t, err)
+  +	assert.Equal(t, "Alice Updated", got.Name)
+  +	assert.Equal(t, "alice2@example.com", got.Email)
+  +}
+  ```
+
+testing_practices_excerpt: |
+  ## Error Path Coverage
+  Each function must have tests for all documented error return values.
+  Specifically, for any function that returns a named sentinel error (e.g., ErrNotFound,
+  ErrInvalidInput), there must be at least one test that triggers and asserts that error.
+
+  Use `errors.Is` to verify sentinel errors are correctly wrapped and propagated:
+  ```go
+  assert.ErrorIs(t, err, ErrNotFound)
+  ```
+
+  ## One Test Per Code Path
+  Every significant branch in production code (if-else, switch case, early return)
+  must have at least one corresponding test case verifying the outcome of that branch.
+
+  ## Test Naming
+  Follow the pattern `TestFuncName_Scenario` (e.g., `TestUpdateUser_NotFound`).

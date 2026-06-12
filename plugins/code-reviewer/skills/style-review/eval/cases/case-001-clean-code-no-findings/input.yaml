@@ -1,0 +1,178 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/user-handlers | Base: main | Unit: go-handlers | Files: 2 changed
+
+  ## What Changed
+  Added UserHandler with GetUser and CreateUser methods following project conventions.
+
+  ## Files in This Unit
+  - `handlers/user.go` (added)
+  - `handlers/user_test.go` (added)
+
+  ## Commit Messages
+  - feat: add user CRUD endpoints
+
+  ## Relevant Reference Doc Excerpts
+  ### Style Guide — Naming Conventions
+  - Exported functions, types, and constants must use PascalCase (e.g., `GetUser`, `UserHandler`).
+  - Unexported identifiers must use camelCase (e.g., `buildResponse`, `defaultTimeout`).
+  - Acronyms in names must follow Go convention: `ID`, `URL`, `HTTP` (all caps), not `Id`, `Url`, `Http`.
+
+  ### Style Guide — Error Handling
+  - Errors must be wrapped using `fmt.Errorf("context: %w", err)` to preserve the error chain.
+  - Do not use `errors.New` when wrapping an upstream error; use `fmt.Errorf` with `%w`.
+  - Sentinel errors for public API surfaces must be declared as `var ErrXxx = errors.New(...)`.
+
+  ## Full Diff for This Unit
+  ```diff
+  diff --git a/handlers/user.go b/handlers/user.go
+  new file mode 100644
+  index 0000000..4a7c291
+  --- /dev/null
+  +++ b/handlers/user.go
+  @@ -0,0 +1,62 @@
+  +package handlers
+  +
+  +import (
+  +	"encoding/json"
+  +	"fmt"
+  +	"net/http"
+  +
+  +	"github.com/example/app/internal/store"
+  +)
+  +
+  +// UserHandler handles HTTP requests for user resources.
+  +type UserHandler struct {
+  +	store store.UserStore
+  +}
+  +
+  +// NewUserHandler returns a new UserHandler backed by the given store.
+  +func NewUserHandler(s store.UserStore) *UserHandler {
+  +	return &UserHandler{store: s}
+  +}
+  +
+  +// GetUser handles GET /users/{id}.
+  +func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+  +	userID := r.PathValue("id")
+  +	if userID == "" {
+  +		http.Error(w, "missing user id", http.StatusBadRequest)
+  +		return
+  +	}
+  +
+  +	user, err := h.store.FindByID(r.Context(), userID)
+  +	if err != nil {
+  +		http.Error(w, fmt.Errorf("get user: %w", err).Error(), http.StatusInternalServerError)
+  +		return
+  +	}
+  +
+  +	w.Header().Set("Content-Type", "application/json")
+  +	if err := json.NewEncoder(w).Encode(user); err != nil {
+  +		_ = err
+  +	}
+  +}
+  +
+  +// CreateUser handles POST /users.
+  +func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+  +	var req CreateUserRequest
+  +	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+  +		http.Error(w, fmt.Errorf("decode request: %w", err).Error(), http.StatusBadRequest)
+  +		return
+  +	}
+  +
+  +	user, err := h.store.Create(r.Context(), req.toModel())
+  +	if err != nil {
+  +		http.Error(w, fmt.Errorf("create user: %w", err).Error(), http.StatusInternalServerError)
+  +		return
+  +	}
+  +
+  +	w.Header().Set("Content-Type", "application/json")
+  +	w.WriteHeader(http.StatusCreated)
+  +	if err := json.NewEncoder(w).Encode(user); err != nil {
+  +		_ = err
+  +	}
+  +}
+  +
+  +// buildResponse is an internal helper that marshals v into a JSON byte slice.
+  +func buildResponse(v any) ([]byte, error) {
+  +	b, err := json.Marshal(v)
+  +	if err != nil {
+  +		return nil, fmt.Errorf("marshal response: %w", err)
+  +	}
+  +	return b, nil
+  +}
+  diff --git a/handlers/user_test.go b/handlers/user_test.go
+  new file mode 100644
+  index 0000000..9f1d823
+  --- /dev/null
+  +++ b/handlers/user_test.go
+  @@ -0,0 +1,38 @@
+  +package handlers_test
+  +
+  +import (
+  +	"net/http"
+  +	"net/http/httptest"
+  +	"testing"
+  +
+  +	"github.com/example/app/handlers"
+  +	"github.com/example/app/internal/store/storefakes"
+  +)
+  +
+  +func TestGetUser_NotFound(t *testing.T) {
+  +	fakeStore := &storefakes.FakeUserStore{}
+  +	fakeStore.FindByIDReturns(nil, store.ErrNotFound)
+  +
+  +	h := handlers.NewUserHandler(fakeStore)
+  +	req := httptest.NewRequest(http.MethodGet, "/users/42", nil)
+  +	req.SetPathValue("id", "42")
+  +	rec := httptest.NewRecorder()
+  +
+  +	h.GetUser(rec, req)
+  +
+  +	if rec.Code != http.StatusInternalServerError {
+  +		t.Errorf("expected 500, got %d", rec.Code)
+  +	}
+  +}
+  +
+  +func TestGetUser_MissingID(t *testing.T) {
+  +	fakeStore := &storefakes.FakeUserStore{}
+  +	h := handlers.NewUserHandler(fakeStore)
+  +	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
+  +	rec := httptest.NewRecorder()
+  +
+  +	h.GetUser(rec, req)
+  +
+  +	if rec.Code != http.StatusBadRequest {
+  +		t.Errorf("expected 400, got %d", rec.Code)
+  +	}
+  +}
+  ```
+
+style_guide_excerpt: |
+  ## Naming Conventions
+
+  ### Exported Identifiers
+  All exported functions, methods, types, and constants must use PascalCase.
+  Examples: `GetUser`, `CreateUser`, `UserHandler`, `ErrNotFound`.
+
+  ### Unexported Identifiers
+  All unexported (package-private) functions, variables, and fields must use camelCase.
+  Examples: `buildResponse`, `defaultTimeout`, `userID`.
+
+  ### Acronyms
+  Acronyms in identifiers follow Go standard library conventions: all uppercase or all
+  lowercase depending on position. Correct: `userID`, `GetUserByID`, `parseURL`.
+  Incorrect: `userId`, `GetUserById`, `parseUrl`.
+
+  ## Error Handling
+
+  ### Wrapping Errors
+  Errors must be wrapped with `fmt.Errorf("context message: %w", err)` to preserve the
+  chain for `errors.Is` / `errors.As` inspection. Do not discard the original error.
+
+  ### Sentinel Errors
+  Public sentinel errors must use the `Err` prefix and be declared as package-level vars:
+  `var ErrNotFound = errors.New("not found")`.
+
+  ### Never Swallow Errors Silently
+  Errors returned by non-critical paths (e.g., encoding a response after headers are sent)
+  may be assigned to `_` only when a preceding comment explains why the error is ignored.

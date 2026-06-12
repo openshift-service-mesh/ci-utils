@@ -1,0 +1,13 @@
+# Approval guidance for scribe-maintain interactive prompts.
+# These answers simulate how an engineer would respond when asked whether to apply each proposed update.
+
+approve_architecture: true
+# Reason: The Architecture section is missing PaymentHandler and models/payment.go, which are new real components.
+# The engineer wants the Architecture section updated to document the new payment processing capability.
+
+approve_development_guide: false
+# Reason: The Development Guide accurately reflects the build commands. The engineer wants to review
+# and write any workflow changes manually rather than accepting an auto-generated update.
+
+approve_key_conventions: false
+# Reason: Key Conventions remain accurate for the codebase. No update needed.

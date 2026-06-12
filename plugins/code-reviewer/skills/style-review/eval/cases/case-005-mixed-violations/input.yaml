@@ -1,0 +1,175 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/cache-layer | Base: main | Unit: go-cache | Files: 2 changed
+
+  ## What Changed
+  Added an in-memory cache for service responses with configurable TTL and timeout
+  settings. Introduced a Redis-backed fallback path for distributed deployments.
+
+  ## Files in This Unit
+  - `cache/memory.go` (added)
+  - `cache/redis.go` (added)
+
+  ## Commit Messages
+  - feat: add in-memory and redis cache implementations
+
+  ## Relevant Reference Doc Excerpts
+  ### Style Guide — Naming Conventions
+  - Exported functions, types, and constants must use PascalCase.
+  - Unexported identifiers must use camelCase.
+
+  ### Style Guide — Error Handling
+  - Errors must be wrapped using `fmt.Errorf("context: %w", err)` to preserve the error chain.
+  - Do not use `errors.New` when wrapping an upstream error — use `fmt.Errorf` with `%w`.
+
+  ## Full Diff for This Unit
+  ```diff
+  diff --git a/cache/memory.go b/cache/memory.go
+  new file mode 100644
+  index 0000000..8f2da13
+  --- /dev/null
+  +++ b/cache/memory.go
+  @@ -0,0 +1,60 @@
+  +package cache
+  +
+  +import (
+  +	"errors"
+  +	"sync"
+  +	"time"
+  +)
+  +
+  +const (
+  +	defaultTimeoutMs  = 500
+  +	connectTimeoutMs  = 1000
+  +	shutdownTimeoutMs = 5000
+  +)
+  +
+  +// ErrCacheMiss is returned when a key is not present in the cache.
+  +var ErrCacheMiss = errors.New("cache miss")
+  +
+  +// memoryCache is an unexported type backing the exported Cache interface.
+  +type memoryCache struct {
+  +	mu      sync.RWMutex
+  +	entries map[string]entry
+  +}
+  +
+  +type entry struct {
+  +	value     any
+  +	expiresAt time.Time
+  +}
+  +
+  +// newMemoryCache constructs an initialized memoryCache.
+  +func newMemoryCache() *memoryCache {
+  +	return &memoryCache{entries: make(map[string]entry)}
+  +}
+  +
+  +// get_value retrieves a cache entry by key, returning ErrCacheMiss if absent or expired.
+  +// EXPORTED intent but snake_case — naming convention violation.
+  +func get_value(c *memoryCache, key string) (any, error) {
+  +	c.mu.RLock()
+  +	defer c.mu.RUnlock()
+  +
+  +	e, ok := c.entries[key]
+  +	if !ok || time.Now().After(e.expiresAt) {
+  +		return nil, ErrCacheMiss
+  +	}
+  +	return e.value, nil
+  +}
+  +
+  +// Set stores a value in the cache with the given TTL.
+  +func (c *memoryCache) Set(key string, value any, ttl time.Duration) {
+  +	c.mu.Lock()
+  +	defer c.mu.Unlock()
+  +	c.entries[key] = entry{value: value, expiresAt: time.Now().Add(ttl)}
+  +}
+  diff --git a/cache/redis.go b/cache/redis.go
+  new file mode 100644
+  index 0000000..c5d0e37
+  --- /dev/null
+  +++ b/cache/redis.go
+  @@ -0,0 +1,48 @@
+  +package cache
+  +
+  +import (
+  +	"context"
+  +	"errors"
+  +	"fmt"
+  +
+  +	"github.com/redis/go-redis/v9"
+  +)
+  +
+  +// RedisCache is a Redis-backed implementation of the Cache interface.
+  +type RedisCache struct {
+  +	client *redis.Client
+  +}
+  +
+  +// NewRedisCache creates a RedisCache connected to the given address.
+  +func NewRedisCache(addr string) *RedisCache {
+  +	client := redis.NewClient(&redis.Options{Addr: addr})
+  +	return &RedisCache{client: client}
+  +}
+  +
+  +// Get retrieves a value from Redis by key.
+  +func (c *RedisCache) Get(ctx context.Context, key string) (string, error) {
+  +	val, err := c.client.Get(ctx, key).Result()
+  +	if err != nil {
+  +		if errors.Is(err, redis.Nil) {
+  +			return "", ErrCacheMiss
+  +		}
+  +		// Error not wrapped with %w — breaks errors.Is chain downstream.
+  +		return "", errors.New("redis get failed: " + err.Error())
+  +	}
+  +	return val, nil
+  +}
+  +
+  +// Set stores a key-value pair in Redis with the given TTL.
+  +func (c *RedisCache) Set(ctx context.Context, key, value string, ttlMs int) error {
+  +	ttl := ttlDurationFromMs(ttlMs)
+  +	if err := c.client.Set(ctx, key, value, ttl).Err(); err != nil {
+  +		return fmt.Errorf("redis set %q: %w", key, err)
+  +	}
+  +	return nil
+  +}
+  +
+  +// ttlDurationFromMs converts milliseconds to a time.Duration.
+  +func ttlDurationFromMs(ms int) time.Duration {
+  +	return time.Duration(ms) * time.Millisecond
+  +}
+  ```
+
+style_guide_excerpt: |
+  ## Naming Conventions
+
+  ### Exported Identifiers
+  All exported functions, types, and constants must use PascalCase.
+  Correct: `GetValue`, `RedisCache`, `ErrCacheMiss`.
+  Incorrect: `get_value` (snake_case), `getvalue` (no word boundary).
+
+  ### Unexported Identifiers
+  Unexported identifiers must use camelCase.
+  Examples: `memoryCache`, `newMemoryCache`, `ttlDurationFromMs`.
+
+  ### No snake_case
+  Underscores are forbidden in Go identifier names except in test function names
+  (`TestFoo_EdgeCase`). snake_case is a hard violation regardless of export intent.
+
+  ## Error Handling
+
+  ### Wrapping Errors
+  All errors must be wrapped with `fmt.Errorf("context: %w", err)`. This preserves the
+  original error chain so callers can use `errors.Is` and `errors.As`.
+
+  Correct:
+  ```go
+  return fmt.Errorf("redis get %q: %w", key, err)
+  ```
+
+  Incorrect — discards the original error and breaks the chain:
+  ```go
+  return errors.New("redis get failed: " + err.Error())
+  ```
+
+  ### Sentinel Errors
+  Public sentinel errors must be declared as package-level vars with the `Err` prefix:
+  `var ErrCacheMiss = errors.New("cache miss")`.
+  Note: the style guide does not define a naming convention for timeout-related constants.

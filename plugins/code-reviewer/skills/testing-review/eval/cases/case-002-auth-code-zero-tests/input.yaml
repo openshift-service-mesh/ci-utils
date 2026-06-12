@@ -1,0 +1,135 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/jwt-middleware, Base: main, Files: 1 file changed
+
+  ## Commit Messages
+  - feat: add JWT validation and role-based auth middleware
+
+  ## Files Changed
+  - internal/auth/middleware.go (new file)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/auth/middleware.go b/internal/auth/middleware.go
+  new file mode 100644
+  index 0000000..7c3f8a1
+  --- /dev/null
+  +++ b/internal/auth/middleware.go
+  @@ -0,0 +1,87 @@
+  +package auth
+  +
+  +import (
+  +	"context"
+  +	"errors"
+  +	"fmt"
+  +	"net/http"
+  +	"strings"
+  +
+  +	"github.com/golang-jwt/jwt/v5"
+  +)
+  +
+  +// ContextKey is used to store authenticated claims in request context.
+  +type ContextKey string
+  +
+  +const claimsKey ContextKey = "claims"
+  +
+  +// Claims holds the parsed JWT payload fields used for authorization.
+  +type Claims struct {
+  +	Subject string   `json:"sub"`
+  +	Roles   []string `json:"roles"`
+  +}
+  +
+  +// ErrInvalidToken is returned when token parsing or validation fails.
+  +var ErrInvalidToken = errors.New("invalid token")
+  +
+  +// ErrUnauthorized is returned when the caller lacks a required role.
+  +var ErrUnauthorized = errors.New("unauthorized")
+  +
+  +// ValidateJWT parses and validates a JWT string using the provided HMAC secret.
+  +// Returns parsed Claims on success, or ErrInvalidToken if the token is malformed,
+  +// expired, or signed with the wrong key.
+  +func ValidateJWT(tokenStr string, secret []byte) (*Claims, error) {
+  +	if tokenStr == "" {
+  +		return nil, fmt.Errorf("%w: token string is empty", ErrInvalidToken)
+  +	}
+  +
+  +	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+  +		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+  +			return nil, fmt.Errorf("%w: unexpected signing method %v", ErrInvalidToken, t.Header["alg"])
+  +		}
+  +		return secret, nil
+  +	})
+  +	if err != nil || !token.Valid {
+  +		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+  +	}
+  +
+  +	mapClaims, ok := token.Claims.(jwt.MapClaims)
+  +	if !ok {
+  +		return nil, fmt.Errorf("%w: cannot extract claims", ErrInvalidToken)
+  +	}
+  +
+  +	roles, _ := mapClaims["roles"].([]interface{})
+  +	strRoles := make([]string, 0, len(roles))
+  +	for _, r := range roles {
+  +		if s, ok := r.(string); ok {
+  +			strRoles = append(strRoles, s)
+  +		}
+  +	}
+  +
+  +	return &Claims{
+  +		Subject: fmt.Sprintf("%v", mapClaims["sub"]),
+  +		Roles:   strRoles,
+  +	}, nil
+  +}
+  +
+  +// RequireAuth returns an HTTP middleware that validates the Bearer token and
+  +// enforces that the caller has the given role. Injects *Claims into context on success.
+  +func RequireAuth(secret []byte, role string) func(http.Handler) http.Handler {
+  +	return func(next http.Handler) http.Handler {
+  +		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  +			authHeader := r.Header.Get("Authorization")
+  +			if !strings.HasPrefix(authHeader, "Bearer ") {
+  +				http.Error(w, "missing or malformed Authorization header", http.StatusUnauthorized)
+  +				return
+  +			}
+  +
+  +			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+  +			claims, err := ValidateJWT(tokenStr, secret)
+  +			if err != nil {
+  +				http.Error(w, "invalid token", http.StatusUnauthorized)
+  +				return
+  +			}
+  +
+  +			for _, r := range claims.Roles {
+  +				if r == role {
+  +					ctx := context.WithValue(r.Context(), claimsKey, claims)
+  +					next.ServeHTTP(w, r.WithContext(ctx))
+  +					return
+  +				}
+  +			}
+  +
+  +			http.Error(w, "forbidden: insufficient role", http.StatusForbidden)
+  +		})
+  +	}
+  +}
+  ```
+
+testing_practices_excerpt: |
+  ## Security and Auth Code Coverage Requirement
+  All authentication and authorization code must have 100% test coverage. This is
+  non-negotiable: a bug in auth code can lead to privilege escalation or unauthorized
+  data access across the entire service.
+
+  Required test scenarios for auth/JWT code:
+  - Valid token with correct role → request proceeds
+  - Valid token with wrong role → 403 Forbidden
+  - Expired token → 401 Unauthorized
+  - Malformed/empty token → 401 Unauthorized
+  - Missing Authorization header → 401 Unauthorized
+  - Token signed with wrong secret → 401 Unauthorized
+
+  ## Test Naming
+  Follow the pattern `TestFuncName_Scenario` (e.g., `TestValidateJWT_ExpiredToken`).
+
+  ## Table-Driven Tests
+  Prefer table-driven tests when testing multiple similar scenarios.

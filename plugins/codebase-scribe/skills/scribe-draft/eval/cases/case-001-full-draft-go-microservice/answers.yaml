@@ -1,0 +1,20 @@
+# answers.yaml — LLM answerer guidance for case-001
+#
+# The skill may ask for audience or scope clarification.
+# Provide a full draft targeting a developer audience with emphasis
+# on architecture and the development workflow.
+
+audience: developer
+scope: full
+focus:
+  - architecture
+  - development
+
+guidance: >
+  The user wants a complete AGENT.md for the user-api Go microservice written
+  for developers who will be contributing code. Emphasize the layered architecture
+  (handlers → services → repositories) and the development workflow using make
+  commands. Include runnable commands from the Makefile. If asked to confirm
+  audience, confirm "developer". If asked about scope, confirm "full" draft.
+  Do not skip any section — generate all sections including Project Overview,
+  Architecture, Development Guide, Key Conventions, and Contributing.

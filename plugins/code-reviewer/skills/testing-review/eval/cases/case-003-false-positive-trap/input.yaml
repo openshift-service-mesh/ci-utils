@@ -1,0 +1,103 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/payment-processor, Base: main, Files: 1 file changed
+
+  ## Commit Messages
+  - feat: add ProcessPayment to handle charge requests
+
+  ## Files Changed
+  - internal/payment/processor.go (modified)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/payment/processor.go b/internal/payment/processor.go
+  index b2c3d4e..f5a6b7c 100644
+  --- a/internal/payment/processor.go
+  +++ b/internal/payment/processor.go
+  @@ -1,24 +1,68 @@
+   package payment
+
+   import (
+  +	"context"
+  +	"errors"
+   	"fmt"
+   )
+
+  +// ErrInsufficientFunds is returned when the account balance is too low.
+  +var ErrInsufficientFunds = errors.New("insufficient funds")
+  +
+  +// ErrInvalidAmount is returned when the charge amount is non-positive.
+  +var ErrInvalidAmount = errors.New("invalid amount")
+  +
+  +// ChargeRequest holds the parameters for a payment charge operation.
+   type ChargeRequest struct {
+  +	AccountID string
+  +	AmountCents int64
+  +	Currency    string
+  +	Description string
+   }
+
+  +// ChargeResult holds the outcome of a successful payment charge.
+   type ChargeResult struct {
+  +	TransactionID string
+  +	Status        string
+   }
+
+  +// Gateway defines the external payment provider interface.
+   type Gateway interface {
+  +	Charge(ctx context.Context, req ChargeRequest) (*ChargeResult, error)
+  +	GetBalance(ctx context.Context, accountID string) (int64, error)
+   }
+
+  +// Processor orchestrates payment operations using an external Gateway.
+   type Processor struct {
+   	gateway Gateway
+   }
+
+  +// NewProcessor constructs a Processor backed by the given Gateway.
+   func NewProcessor(gateway Gateway) *Processor {
+   	return &Processor{gateway: gateway}
+   }
+
+  +// ProcessPayment validates the request and delegates the charge to the Gateway.
+  +// Returns ErrInsufficientFunds if the account balance is lower than AmountCents.
+  +// Returns ErrInvalidAmount if AmountCents is zero or negative.
+  +func (p *Processor) ProcessPayment(ctx context.Context, req ChargeRequest) (*ChargeResult, error) {
+  +	if req.AmountCents <= 0 {
+  +		return nil, fmt.Errorf("%w: amount must be positive, got %d", ErrInvalidAmount, req.AmountCents)
+  +	}
+  +	if req.AccountID == "" {
+  +		return nil, fmt.Errorf("%w: account ID must not be empty", ErrInvalidAmount)
+  +	}
+  +
+  +	balance, err := p.gateway.GetBalance(ctx, req.AccountID)
+  +	if err != nil {
+  +		return nil, fmt.Errorf("get balance: %w", err)
+  +	}
+  +	if balance < req.AmountCents {
+  +		return nil, fmt.Errorf("%w: balance %d < required %d", ErrInsufficientFunds, balance, req.AmountCents)
+  +	}
+  +
+  +	result, err := p.gateway.Charge(ctx, req)
+  +	if err != nil {
+  +		return nil, fmt.Errorf("gateway charge: %w", err)
+  +	}
+  +	return result, nil
+  +}
+  ```
+
+testing_practices_excerpt: |
+  ## Payment Processing Coverage
+  All payment processing code must have tests for both success and failure paths.
+  Required scenarios include:
+  - Successful charge with sufficient funds
+  - Insufficient funds rejection
+  - Invalid input (zero/negative amount, empty account ID)
+  - Gateway errors propagated correctly
+
+  ## Test Naming
+  Follow the pattern `TestFuncName_Scenario` (e.g., `TestProcessPayment_Success`).
+
+  ## Assertions
+  Use `github.com/stretchr/testify/assert` and `require` for all assertions.
+  Check that errors wrap the correct sentinel using `errors.Is`.

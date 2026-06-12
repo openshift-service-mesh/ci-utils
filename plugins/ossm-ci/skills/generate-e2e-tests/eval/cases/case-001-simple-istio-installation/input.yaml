@@ -1,0 +1,8 @@
+documentation_path: "docs"
+output_path: "tests/e2e"
+project_name: "ossm-e2e"
+quality_settings:
+  threshold: 7
+environment:
+  cluster_type: "openshift"
+  auth_method: "service_account"

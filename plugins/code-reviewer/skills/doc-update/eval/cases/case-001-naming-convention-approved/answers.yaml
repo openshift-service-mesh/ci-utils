@@ -1,0 +1,21 @@
+# Guidance for responding to doc-update questions in this case.
+#
+# The skill will likely ask whether to add a convention for the XxxErr typed error suffix.
+# Approve this proposed addition — it is a genuine project-wide pattern that the engineer
+# explicitly confirmed and it is not currently documented in the style guide.
+#
+# If the skill proposes wording that accurately captures the distinction between
+# ErrXxx (sentinel, errors.Is) and XxxErr (typed struct with context fields), approve as-is.
+# If the wording is slightly imprecise, it is still fine to approve — do not refine unless
+# the proposed text is actively misleading.
+
+approve_all: true
+
+per_change_guidance:
+  - pattern: "XxxErr|typed error|error struct|error type naming"
+    action: approve
+    rationale: >
+      The engineer explicitly confirmed this pattern is intentional and project-wide.
+      It has been in use since the payment service PR and should be documented so
+      future contributors use it consistently. Approve any reasonable phrasing that
+      captures the XxxErr suffix for typed error structs.

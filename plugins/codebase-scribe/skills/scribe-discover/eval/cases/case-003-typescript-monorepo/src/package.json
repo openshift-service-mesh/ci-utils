@@ -1,0 +1,26 @@
+{
+  "name": "user-directory-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/frontend",
+    "packages/backend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "jest --projects packages/*/jest.config.js",
+    "lint": "eslint 'packages/*/src/**/*.{ts,tsx}'",
+    "dev:frontend": "npm -w packages/frontend run dev",
+    "dev:backend": "npm -w packages/backend run dev"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^7.12.0",
+    "@typescript-eslint/parser": "^7.12.0",
+    "eslint": "^9.4.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.4",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,42 @@
+project:
+  name: orderservice
+  description: Go REST microservice for managing customer orders
+  type: service
+
+languages:
+  primary: go
+  secondary: []
+
+frameworks:
+  - name: gin
+    purpose: HTTP routing and middleware
+
+architecture:
+  pattern: REST microservice
+  description: Handler/model separation with Gin routing; stateless design
+  components:
+    - name: OrderHandler
+      path: handlers/order.go
+      type: handler
+      description: Handles List, Get, Create, and UpdateStatus operations for orders
+    - name: Order
+      path: models/order.go
+      type: model
+      description: Domain struct for order data with ID, UserID, Total, and Status fields
+
+entry_points:
+  - main.go
+
+build_system:
+  name: make
+  config_file: Makefile
+  commands:
+    build: make build
+    test: make test
+    run: make run
+    lint: make lint
+
+test_framework:
+  name: testing
+  test_dir: .
+  config: null

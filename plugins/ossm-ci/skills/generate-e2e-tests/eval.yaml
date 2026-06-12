@@ -1,0 +1,194 @@
+name: ossm-ci-eval
+description: Evaluate E2E test generation from documentation using BDD Ginkgo
+skill: ossm-ci:generate-e2e-tests
+
+execution:
+  mode: batch
+  arguments: "--headless"
+  timeout: 3600
+  max_budget_usd: 10.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: ossm-ci-eval
+
+dataset:
+  path: plugins/ossm-ci/skills/generate-e2e-tests/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * documentation_path: path to source documentation folder (markdown/adoc files)
+      * output_path: target directory for generated test files (e.g., "tests/e2e")
+      * project_name: package identifier for Go tests
+      * quality_settings.threshold: minimum quality score 1-10 (default 7)
+      * exclude_patterns: list of glob patterns to skip (e.g., ["*.draft.md"])
+      * include_patterns: optional list of specific files to include
+      * test_config: object with setup_required, cleanup_required, framework, parallel_execution
+      * retry_config: optional retry policy override
+      * timeout_config: optional timeout policy override
+      * environment: object with cluster_type and auth_method
+    - docs/: sample documentation files (markdown/adoc) with optional hidden HTML tags
+      (<!-- TEST-TIMEOUT -->, <!-- TEST-RETRY -->, <!-- TEST-VALIDATION -->) for test boundaries
+    - annotations.yaml: expected quality score, number of test files, whether generation should succeed
+
+inputs:
+  tools:
+    - match: AskUserQuestion (prompts for documentation_path, output_path, project_name in interactive mode)
+      prompt: |
+        Answer using values from input.yaml. Map questions to fields:
+        "documentation path" → input.documentation_path
+        "output path" → input.output_path
+        "project name" → input.project_name
+        "quality threshold" → input.quality_settings.threshold (default 7)
+        "cluster type" → input.environment.cluster_type
+        "auth method" → input.environment.auth_method
+
+outputs:
+  - path: output
+    schema: |
+      Generated Go E2E test suite in tests/e2e/ subdirectory structure:
+      - documentation/*.go: Ginkgo BDD test files named {feature}_test.go
+        (e.g., installation_test.go, configuration_test.go)
+        Structure: var _ = Describe("Feature", func() { Context/It blocks })
+        With By() steps, Eventually() assertions, Expect() validations
+      - helpers/validation.go: validation utility functions
+      - helpers/retry.go: retry logic with configurable backoff strategies
+      - helpers/setup.go: setup/teardown helper functions
+      - test-config.yaml: test configuration with timeouts, retries, validation, environment sections
+      If quality score < threshold, NO test files generated; instead a quality assessment
+      report is returned with blocking issues and improvement suggestions.
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 8.0
+
+  - name: test_files_generated
+    description: |
+      Verifies that Go test files were generated when quality threshold was met.
+      When threshold not met, verifies quality report was produced instead.
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      expected_success = annotations.get("generation_should_succeed", True)
+      test_files = [k for k in files if k.endswith("_test.go")]
+      if expected_success:
+          if not test_files:
+              return (False, "No *_test.go files generated despite quality threshold met")
+          return (True, f"Generated {len(test_files)} test files")
+      else:
+          conversation = outputs.get("conversation", "")
+          has_quality_report = "quality" in conversation.lower() and "threshold" in conversation.lower()
+          if not has_quality_report:
+              return (False, "Expected quality failure report but none found")
+          return (True, "Quality gate correctly blocked test generation")
+
+  - name: ginkgo_structure_valid
+    description: |
+      Validates that generated test files follow Ginkgo BDD structure with
+      var _ = Describe blocks, By() steps, and Eventually() assertions.
+    check: |
+      import re
+      files = outputs.get("files", {})
+      test_files = {k: v for k, v in files.items() if k.endswith("_test.go")}
+      if not test_files:
+          return (True, "No test files to validate (check test_files_generated judge)")
+      for fname, content in test_files.items():
+          if "var _ = Describe" not in content:
+              return (False, f"{fname}: missing 'var _ = Describe' BDD structure")
+      has_eventually = any("Eventually(" in v for v in test_files.values())
+      has_by = any("By(" in v for v in test_files.values())
+      if not has_by:
+          return (False, "No By() step annotations in generated test files")
+      return (True, f"{len(test_files)} test files with valid Ginkgo structure; Eventually={has_eventually}")
+
+  - name: helper_files_present
+    description: |
+      Checks that Go helper utility files were created alongside the test files.
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      if not annotations.get("generation_should_succeed", True):
+          return (True, "Helper files not expected (quality gate blocked generation)")
+      helper_files = [k for k in files if "helpers/" in k and k.endswith(".go")]
+      if not helper_files:
+          return (False, "No helper .go files generated in helpers/ directory")
+      return (True, f"Generated helper files: {[k.split('/')[-1] for k in helper_files]}")
+
+  - name: test_config_valid
+    description: |
+      Validates that test-config.yaml was created with required sections.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      if not annotations.get("generation_should_succeed", True):
+          return (True, "test-config.yaml not expected (quality gate blocked generation)")
+      config_files = [k for k in files if k.endswith("test-config.yaml")]
+      if not config_files:
+          return (False, "test-config.yaml not generated")
+      config_content = files[config_files[0]]
+      try:
+          config = yaml.safe_load(config_content)
+          required = ["timeouts", "retries", "validation", "environment"]
+          missing = [s for s in required if s not in config]
+          if missing:
+              return (False, f"test-config.yaml missing sections: {missing}")
+      except yaml.YAMLError as e:
+          return (False, f"Invalid YAML in test-config.yaml: {e}")
+      return (True, "test-config.yaml valid with all required sections")
+
+  - name: documentation_accuracy
+    description: |
+      Evaluates whether generated tests accurately reflect the source documentation,
+      with By() steps matching documented procedures and validations matching expected outcomes.
+    prompt: |
+      Evaluate whether the generated Go E2E tests accurately implement the documented procedures.
+
+      Generated test output:
+      {{ outputs }}
+
+      Assess:
+      1. Do By() step descriptions match the procedural steps in the source documentation?
+      2. Are key documented commands/operations represented as Eventually() assertions or Expect() calls?
+      3. Are error scenarios (if documented) represented as test cases?
+      4. Is the test organization (Describe/Context blocks) sensible for the documentation structure?
+
+      Score 1-5:
+      1: Tests bear little resemblance to documentation content
+      2: Some procedures captured but major gaps or misrepresentations
+      3: Core procedures covered but missing edge cases or error scenarios
+      4: Good coverage of documentation with minor gaps
+      5: Comprehensive, accurate conversion of documentation to executable tests
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  test_files_generated:
+    min_pass_rate: 0.9
+  ginkgo_structure_valid:
+    min_pass_rate: 1.0
+  helper_files_present:
+    min_pass_rate: 0.9
+  test_config_valid:
+    min_pass_rate: 0.9
+  documentation_accuracy:
+    min_mean: 3.5

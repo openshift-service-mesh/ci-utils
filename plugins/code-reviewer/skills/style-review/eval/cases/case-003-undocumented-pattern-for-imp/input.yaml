@@ -1,0 +1,165 @@
+unit_brief: |
+  ## Change Overview
+  Branch: feature/store-layer | Base: main | Unit: go-store | Files: 2 changed
+
+  ## What Changed
+  Added UserStore and OrderStore implementations backed by PostgreSQL.
+  Both stores declare sentinel error variables used throughout the codebase.
+
+  ## Files in This Unit
+  - `store/user_store.go` (added)
+  - `store/order_store.go` (added)
+
+  ## Commit Messages
+  - feat: add postgres-backed user and order stores
+
+  ## Relevant Reference Doc Excerpts
+  ### Style Guide — Naming Conventions
+  - Exported functions, types, and constants must use PascalCase.
+  - Unexported identifiers must use camelCase.
+  - Acronyms follow Go stdlib convention: `ID`, `URL`, `HTTP` (not `Id`, `Url`, `Http`).
+
+  ### Style Guide — Error Handling
+  - Errors must be wrapped using `fmt.Errorf("context: %w", err)` to preserve the error chain.
+  - Sentinel errors for public API surfaces must be declared as `var ErrXxx = errors.New(...)`.
+
+  ## Full Diff for This Unit
+  ```diff
+  diff --git a/store/user_store.go b/store/user_store.go
+  new file mode 100644
+  index 0000000..7c3d801
+  --- /dev/null
+  +++ b/store/user_store.go
+  @@ -0,0 +1,52 @@
+  +package store
+  +
+  +import (
+  +	"context"
+  +	"errors"
+  +	"fmt"
+  +
+  +	"github.com/jackc/pgx/v5"
+  +	"github.com/jackc/pgx/v5/pgxpool"
+  +)
+  +
+  +var (
+  +	errNotFound  = errors.New("record not found")
+  +	errDuplicate = errors.New("duplicate key")
+  +	errTimeout   = errors.New("query timed out")
+  +)
+  +
+  +// UserStore provides access to user records in PostgreSQL.
+  +type UserStore struct {
+  +	pool *pgxpool.Pool
+  +}
+  +
+  +// NewUserStore creates a UserStore backed by the given connection pool.
+  +func NewUserStore(pool *pgxpool.Pool) *UserStore {
+  +	return &UserStore{pool: pool}
+  +}
+  +
+  +// FindByID retrieves a user by their unique ID.
+  +func (s *UserStore) FindByID(ctx context.Context, id string) (*User, error) {
+  +	row := s.pool.QueryRow(ctx, `SELECT id, name, email FROM users WHERE id = $1`, id)
+  +	var u User
+  +	if err := row.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+  +		if errors.Is(err, pgx.ErrNoRows) {
+  +			return nil, errNotFound
+  +		}
+  +		return nil, fmt.Errorf("scan user row: %w", err)
+  +	}
+  +	return &u, nil
+  +}
+  +
+  +// Create inserts a new user and returns the created record.
+  +func (s *UserStore) Create(ctx context.Context, u *User) (*User, error) {
+  +	row := s.pool.QueryRow(ctx,
+  +		`INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id, name, email`,
+  +		u.Name, u.Email,
+  +	)
+  +	var created User
+  +	if err := row.Scan(&created.ID, &created.Name, &created.Email); err != nil {
+  +		return nil, fmt.Errorf("create user: %w", err)
+  +	}
+  +	return &created, nil
+  +}
+  diff --git a/store/order_store.go b/store/order_store.go
+  new file mode 100644
+  index 0000000..4b1e92f
+  --- /dev/null
+  +++ b/store/order_store.go
+  @@ -0,0 +1,44 @@
+  +package store
+  +
+  +import (
+  +	"context"
+  +	"errors"
+  +	"fmt"
+  +
+  +	"github.com/jackc/pgx/v5"
+  +	"github.com/jackc/pgx/v5/pgxpool"
+  +)
+  +
+  +var (
+  +	errOrderNotFound = errors.New("order not found")
+  +	errOrderExpired  = errors.New("order expired")
+  +)
+  +
+  +// OrderStore provides access to order records in PostgreSQL.
+  +type OrderStore struct {
+  +	pool *pgxpool.Pool
+  +}
+  +
+  +// NewOrderStore creates an OrderStore backed by the given connection pool.
+  +func NewOrderStore(pool *pgxpool.Pool) *OrderStore {
+  +	return &OrderStore{pool: pool}
+  +}
+  +
+  +// FindByID retrieves an order by its unique ID.
+  +func (s *OrderStore) FindByID(ctx context.Context, id string) (*Order, error) {
+  +	row := s.pool.QueryRow(ctx, `SELECT id, user_id, status FROM orders WHERE id = $1`, id)
+  +	var o Order
+  +	if err := row.Scan(&o.ID, &o.UserID, &o.Status); err != nil {
+  +		if errors.Is(err, pgx.ErrNoRows) {
+  +			return nil, errOrderNotFound
+  +		}
+  +		return nil, fmt.Errorf("scan order row: %w", err)
+  +	}
+  +	return &o, nil
+  +}
+  +
+  +// Cancel marks an order as cancelled.
+  +func (s *OrderStore) Cancel(ctx context.Context, id string) error {
+  +	_, err := s.pool.Exec(ctx, `UPDATE orders SET status = 'cancelled' WHERE id = $1`, id)
+  +	if err != nil {
+  +		return fmt.Errorf("cancel order: %w", err)
+  +	}
+  +	return nil
+  +}
+  ```
+
+style_guide_excerpt: |
+  ## Naming Conventions
+
+  ### Exported Identifiers
+  All exported functions, methods, types, and constants must use PascalCase.
+  Examples: `FindByID`, `UserStore`, `ErrNotFound`.
+
+  ### Unexported Identifiers
+  Unexported identifiers must use camelCase.
+  Examples: `pool`, `parseRow`, `defaultLimit`.
+
+  ### Acronyms
+  Acronyms in identifiers follow Go standard library convention. Use all-caps for
+  acronyms: `ID`, `URL`, `HTTP`. Do not use `Id`, `Url`, or `Http`.
+
+  ## Error Handling
+
+  ### Wrapping Errors
+  Errors must be wrapped with `fmt.Errorf("context: %w", err)` to preserve the chain
+  for `errors.Is` / `errors.As` callers.
+
+  ### Sentinel Errors
+  Public sentinel errors (returned from exported functions) must be declared as package-level
+  vars with the `Err` prefix: `var ErrNotFound = errors.New("not found")`.
+  Note: the style guide does not specify a naming pattern for unexported sentinel errors.

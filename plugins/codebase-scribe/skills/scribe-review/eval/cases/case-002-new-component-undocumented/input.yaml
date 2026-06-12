@@ -1,0 +1,7 @@
+staleness_type: "new_component_undocumented"
+expected_stale_sections:
+  - "Architecture"
+expected_current_sections:
+  - "Development Guide"
+  - "Key Directories"
+  - "Testing"

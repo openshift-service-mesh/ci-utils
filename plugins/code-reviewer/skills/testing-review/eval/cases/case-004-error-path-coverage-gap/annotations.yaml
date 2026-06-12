@@ -1,0 +1,4 @@
+expected_tst_count: 1
+expected_imp_count: 0
+expected_critical_count: 0
+false_positive_trap: false

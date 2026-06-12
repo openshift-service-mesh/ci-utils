@@ -1,0 +1,51 @@
+review_context: |
+  ## Consolidated Review — feature/error-handling-refactor → main
+
+  ### Summary
+  This PR refactors error handling across the user service package, introducing typed errors
+  for cleaner error propagation. 3 findings total: 0 bugs, 0 security issues, 1 style note,
+  1 improvement suggestion, 1 no-defect.
+
+  ---
+
+  ### BUG Findings
+  None.
+
+  ### STY Findings
+
+  **STY-1** — `internal/user/errors.go:14`
+  The exported `ErrNotFound` variable shadows the package-level sentinel. Rename to avoid
+  confusion with the typed error.
+  Status: Engineer acknowledged, will fix before merge.
+
+  ### IMP Findings
+
+  **IMP-1** — `internal/user/errors.go`, `internal/user/service.go`, `internal/order/errors.go`
+  All error types introduced in this PR follow a consistent `XxxErr` suffix pattern:
+  `NotFoundErr`, `ValidationErr`, `PermissionErr`, `ConflictErr`. This is a clear, intentional
+  naming convention, but it is not documented in the style guide. The pattern is distinct from
+  the existing sentinel variable convention (`ErrXxx`) and worth capturing so future contributors
+  use it consistently.
+
+  Engineer response: "Yes, we standardized on `XxxErr` for typed error structs a few weeks ago
+  after the payment service PR. The sentinel variable pattern (`ErrXxx`) is kept for package-level
+  exported errors that callers compare with `errors.Is`. Typed structs always get the `Err` suffix
+  at the end."
+
+  Reviewer note: The engineer's clarification adds precision — the two patterns are complementary:
+  `ErrXxx` (sentinel, `errors.Is`-comparable) vs `XxxErr` (struct, contains context fields).
+  Both patterns are in use; only `ErrXxx` is currently documented.
+
+  ### ND Findings
+
+  **ND-1** — `internal/user/errors.go:8`
+  The `Error() string` method is correctly implemented on all typed error structs.
+
+  ---
+
+  ### Engineer Q&A
+  Q: Should `ValidationErr` carry the field name that failed validation?
+  A: Yes — it already does via the `Field string` member. That's intentional.
+
+branch_name: "feature/error-handling-refactor"
+base_branch: "main"

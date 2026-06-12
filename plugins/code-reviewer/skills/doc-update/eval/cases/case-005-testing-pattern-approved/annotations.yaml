@@ -1,0 +1,4 @@
+expected_changes_proposed: 1
+expected_changes_approved: 1
+expected_files_modified:
+  - testing-practices.md

@@ -1,0 +1,20 @@
+# answers.yaml — LLM answerer guidance for case-003
+#
+# This is a section-only update. The user wants to regenerate only the
+# Architecture section of an existing AGENT.md. The rest of the document
+# should remain unchanged.
+
+audience: developer
+scope: section
+focus:
+  - architecture
+
+guidance: >
+  The user wants only the Architecture section regenerated. The existing AGENT.md
+  has a placeholder Architecture section ("TODO: Architecture section needs to be written").
+  Generate a complete, detailed Architecture section covering all components from the
+  inventory: UserHandler, HealthHandler, UserService, UserRepository, and Router.
+  Explain the layered architecture pattern (handlers → services → repositories) and
+  describe each component's responsibility and file path. Do not regenerate or modify
+  any other section of the document. If asked about scope, confirm "section" with
+  focus on "architecture". If asked about audience, confirm "developer".

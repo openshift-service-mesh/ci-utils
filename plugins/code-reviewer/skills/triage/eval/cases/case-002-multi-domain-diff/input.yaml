@@ -1,0 +1,207 @@
+diff_content: |
+  diff --git a/handlers/payment.go b/handlers/payment.go
+  index 0000000..e4c9f23 100644
+  --- /dev/null
+  +++ b/handlers/payment.go
+  @@ -0,0 +1,55 @@
+  +package handlers
+  +
+  +import (
+  +	"net/http"
+  +
+  +	"github.com/gin-gonic/gin"
+  +	"myapp/models"
+  +	"myapp/services"
+  +)
+  +
+  +// CreatePayment handles POST /payments to initiate a new payment.
+  +func CreatePayment(c *gin.Context) {
+  +	var req models.PaymentRequest
+  +	if err := c.ShouldBindJSON(&req); err != nil {
+  +		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+  +		return
+  +	}
+  +
+  +	if req.Amount <= 0 {
+  +		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be positive"})
+  +		return
+  +	}
+  +
+  +	payment, err := services.ProcessPayment(c.Request.Context(), req)
+  +	if err != nil {
+  +		c.JSON(http.StatusInternalServerError, gin.H{"error": "payment processing failed"})
+  +		return
+  +	}
+  +
+  +	c.JSON(http.StatusCreated, payment)
+  +}
+  +
+  +// GetPayment retrieves a payment by ID.
+  +func GetPayment(c *gin.Context) {
+  +	id := c.Param("id")
+  +	payment, err := services.GetPaymentByID(c.Request.Context(), id)
+  +	if err != nil {
+  +		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+  +		return
+  +	}
+  +	c.JSON(http.StatusOK, payment)
+  +}
+  diff --git a/handlers/payment_test.go b/handlers/payment_test.go
+  index 0000000..d91a8c3 100644
+  --- /dev/null
+  +++ b/handlers/payment_test.go
+  @@ -0,0 +1,45 @@
+  +package handlers_test
+  +
+  +import (
+  +	"bytes"
+  +	"encoding/json"
+  +	"net/http"
+  +	"net/http/httptest"
+  +	"testing"
+  +
+  +	"github.com/gin-gonic/gin"
+  +	"github.com/stretchr/testify/assert"
+  +	"myapp/handlers"
+  +)
+  +
+  +func TestCreatePayment_Success(t *testing.T) {
+  +	gin.SetMode(gin.TestMode)
+  +	r := gin.New()
+  +	r.POST("/payments", handlers.CreatePayment)
+  +
+  +	body, _ := json.Marshal(map[string]interface{}{
+  +		"amount":   100,
+  +		"currency": "USD",
+  +		"user_id":  "user-1",
+  +	})
+  +	w := httptest.NewRecorder()
+  +	req, _ := http.NewRequest(http.MethodPost, "/payments", bytes.NewBuffer(body))
+  +	req.Header.Set("Content-Type", "application/json")
+  +	r.ServeHTTP(w, req)
+  +
+  +	assert.Equal(t, http.StatusCreated, w.Code)
+  +}
+  +
+  +func TestCreatePayment_InvalidAmount(t *testing.T) {
+  +	gin.SetMode(gin.TestMode)
+  +	r := gin.New()
+  +	r.POST("/payments", handlers.CreatePayment)
+  +
+  +	body, _ := json.Marshal(map[string]interface{}{"amount": -5, "currency": "USD"})
+  +	w := httptest.NewRecorder()
+  +	req, _ := http.NewRequest(http.MethodPost, "/payments", bytes.NewBuffer(body))
+  +	req.Header.Set("Content-Type", "application/json")
+  +	r.ServeHTTP(w, req)
+  +
+  +	assert.Equal(t, http.StatusBadRequest, w.Code)
+  +}
+  diff --git a/models/payment.go b/models/payment.go
+  index 0000000..a7b12d4 100644
+  --- /dev/null
+  +++ b/models/payment.go
+  @@ -0,0 +1,22 @@
+  +package models
+  +
+  +import "time"
+  +
+  +// Payment represents a completed payment record.
+  +type Payment struct {
+  +	ID        string    `json:"id" db:"id"`
+  +	UserID    string    `json:"user_id" db:"user_id"`
+  +	Amount    int64     `json:"amount" db:"amount"`
+  +	Currency  string    `json:"currency" db:"currency"`
+  +	Status    string    `json:"status" db:"status"`
+  +	CreatedAt time.Time `json:"created_at" db:"created_at"`
+  +}
+  +
+  +// PaymentRequest is the request body for creating a payment.
+  +type PaymentRequest struct {
+  +	UserID   string `json:"user_id" binding:"required"`
+  +	Amount   int64  `json:"amount" binding:"required"`
+  +	Currency string `json:"currency" binding:"required"`
+  +}
+  +
+  +// ErrPaymentNotFound is returned when a payment does not exist.
+  +var ErrPaymentNotFound = fmt.Errorf("payment not found")
+  diff --git a/frontend/src/PaymentForm.tsx b/frontend/src/PaymentForm.tsx
+  index 0000000..c2e9a71 100644
+  --- /dev/null
+  +++ b/frontend/src/PaymentForm.tsx
+  @@ -0,0 +1,48 @@
+  +import React, { useState } from 'react';
+  +import axios from 'axios';
+  +
+  +interface PaymentFormProps {
+  +  userId: string;
+  +  onSuccess: (paymentId: string) => void;
+  +}
+  +
+  +const PaymentForm: React.FC<PaymentFormProps> = ({ userId, onSuccess }) => {
+  +  const [amount, setAmount] = useState('');
+  +  const [currency, setCurrency] = useState('USD');
+  +  const [error, setError] = useState<string | null>(null);
+  +  const [loading, setLoading] = useState(false);
+  +
+  +  const handleSubmit = async (e: React.FormEvent) => {
+  +    e.preventDefault();
+  +    setError(null);
+  +    setLoading(true);
+  +    try {
+  +      const res = await axios.post('/api/payments', {
+  +        user_id: userId,
+  +        amount: parseInt(amount, 10),
+  +        currency,
+  +      });
+  +      onSuccess(res.data.id);
+  +    } catch (err: any) {
+  +      setError(err.response?.data?.error ?? 'Payment failed');
+  +    } finally {
+  +      setLoading(false);
+  +    }
+  +  };
+  +
+  +  return (
+  +    <form onSubmit={handleSubmit}>
+  +      <input
+  +        type="number"
+  +        value={amount}
+  +        onChange={e => setAmount(e.target.value)}
+  +        placeholder="Amount"
+  +      />
+  +      <select value={currency} onChange={e => setCurrency(e.target.value)}>
+  +        <option value="USD">USD</option>
+  +        <option value="EUR">EUR</option>
+  +      </select>
+  +      <button type="submit" disabled={loading}>Pay</button>
+  +      {error && <p className="error">{error}</p>}
+  +    </form>
+  +  );
+  +};
+  +
+  +export default PaymentForm;
+  diff --git a/migrations/002_add_payment_table.sql b/migrations/002_add_payment_table.sql
+  index 0000000..f81c35a 100644
+  --- /dev/null
+  +++ b/migrations/002_add_payment_table.sql
+  @@ -0,0 +1,15 @@
+  +-- Migration: 002_add_payment_table
+  +-- Created: 2026-06-08
+  +
+  +CREATE TABLE IF NOT EXISTS payments (
+  +    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  +    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  +    amount      BIGINT NOT NULL CHECK (amount > 0),
+  +    currency    VARCHAR(3) NOT NULL DEFAULT 'USD',
+  +    status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+  +    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  +    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  +);
+  +
+  +CREATE INDEX idx_payments_user_id ON payments(user_id);
+  +CREATE INDEX idx_payments_status ON payments(status);
+
+commit_messages:
+  - "feat: implement payment processing flow"
+
+base_branch: "main"

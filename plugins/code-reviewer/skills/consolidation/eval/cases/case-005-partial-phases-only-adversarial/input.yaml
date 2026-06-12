@@ -1,0 +1,30 @@
+phase_reports_context: |
+  ## Adversarial Review Report [adversarial] — Unit: cache-layer
+
+  ### Strengths
+  - `cache/redis.go:18`: Connection pool size is configurable rather than hardcoded
+  - `cache/redis.go:42`: Cache keys are namespaced to prevent collisions across environments
+
+  ### Important
+  **BUG-1** [Error Handling] `cache/redis.go:67` — `Get` calls `json.Unmarshal` without first
+  checking whether the Redis `GET` returned a nil result (cache miss); when the key is absent
+  Redis returns `redis.Nil` and the subsequent unmarshal receives an empty byte slice, producing
+  a silent zero-value struct that is returned as a cache hit
+  Consequence: Cache misses are silently treated as hits with zero-value data, causing callers
+  to serve empty or incorrect responses to users without falling back to the database
+  Fix: Check `errors.Is(err, redis.Nil)` after the `Get` call and return `(nil, ErrCacheMiss)`
+  so callers can distinguish a miss from an error or a populated entry
+
+  ### Minor
+  **IMP-1** `cache/redis.go:89` — the `Set` method allocates a new `bytes.Buffer` on every call;
+  for high-throughput paths a `sync.Pool` of buffers would reduce GC pressure without changing
+  observable behaviour
+  Fix: Introduce a package-level `sync.Pool` and benchmark before and after to confirm the
+  improvement is measurable in the target load profile
+
+review_unit_count: 1
+phases_completed:
+  - adversarial
+phases_failed:
+  - style
+  - testing

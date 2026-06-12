@@ -1,0 +1,39 @@
+phase_reports_context: |
+  ## Adversarial Review Report [adversarial] — Unit: user-search
+
+  ### Strengths
+  - `search/query.go:8`: Input struct fields are clearly documented
+
+  ### Critical
+  **SEC-1** [Injection] `search/query.go:31` — user-supplied `name` parameter is interpolated
+  directly into a raw SQL string with `fmt.Sprintf("SELECT * FROM users WHERE name='%s'", name)`
+  Consequence: Classic SQL injection; an attacker can exfiltrate the entire users table, bypass
+  authentication, or drop tables
+  Fix: Replace with a parameterized query: `db.QueryContext(ctx, "SELECT * FROM users WHERE name = $1", name)`
+
+  ### Important
+  **BUG-1** [Error Handling] `search/query.go:55` — query errors are swallowed with `_ = err`
+  and the handler continues to iterate over a nil `rows` value, causing a nil-pointer dereference
+  Consequence: Panic in production when the database is unreachable or the query fails
+  Fix: Return the error and respond with HTTP 500; do not proceed past a failed `QueryContext`
+
+  ---
+  ## Style Review Report [style] — Unit: user-search
+
+  ### Strengths
+  - `search/query.go:1`: Package name is lowercase and matches directory name
+
+  ---
+  ## Testing Review Report [testing] — Unit: user-search
+
+  ### Minor
+  **TST-1** `search/query.go:31` — no test exercises the SQL injection surface; a table-driven
+  test with special-character inputs (single quote, semicolon) would confirm sanitization
+  Fix: Add fuzz-style tests with adversarial SQL strings once the parameterized query fix lands
+
+review_unit_count: 1
+phases_completed:
+  - adversarial
+  - style
+  - testing
+phases_failed: []

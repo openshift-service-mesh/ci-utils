@@ -1,0 +1,105 @@
+diff_content: |
+  diff --git a/handlers/user.go b/handlers/user.go
+  index a3c1f2e..b8d4071 100644
+  --- a/handlers/user.go
+  +++ b/handlers/user.go
+  @@ -1,6 +1,7 @@
+   package handlers
+
+   import (
+  +	"net/http"
+   	"github.com/gin-gonic/gin"
+   	"myapp/models"
+   	"myapp/services"
+  @@ -18,6 +19,25 @@ func CreateUser(c *gin.Context) {
+   	c.JSON(http.StatusCreated, user)
+   }
+
+  +// GetUser retrieves a single user by ID.
+  +func GetUser(c *gin.Context) {
+  +	id := c.Param("id")
+  +	if id == "" {
+  +		c.JSON(http.StatusBadRequest, gin.H{"error": "missing user id"})
+  +		return
+  +	}
+  +
+  +	user, err := services.GetUserByID(c.Request.Context(), id)
+  +	if err != nil {
+  +		if errors.Is(err, models.ErrNotFound) {
+  +			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+  +			return
+  +		}
+  +		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+  +		return
+  +	}
+  +
+  +	c.JSON(http.StatusOK, user)
+  +}
+  +
+   func RegisterRoutes(r *gin.Engine) {
+   	r.POST("/users", CreateUser)
+  +	r.GET("/users/:id", GetUser)
+   }
+  diff --git a/handlers/user_test.go b/handlers/user_test.go
+  index 0000000..c5e8a19 100644
+  --- /dev/null
+  +++ b/handlers/user_test.go
+  @@ -0,0 +1,52 @@
+  +package handlers_test
+  +
+  +import (
+  +	"encoding/json"
+  +	"net/http"
+  +	"net/http/httptest"
+  +	"testing"
+  +
+  +	"github.com/gin-gonic/gin"
+  +	"github.com/stretchr/testify/assert"
+  +	"github.com/stretchr/testify/require"
+  +	"myapp/handlers"
+  +	"myapp/models"
+  +)
+  +
+  +func TestGetUser_Success(t *testing.T) {
+  +	gin.SetMode(gin.TestMode)
+  +	r := gin.New()
+  +	r.GET("/users/:id", handlers.GetUser)
+  +
+  +	w := httptest.NewRecorder()
+  +	req, _ := http.NewRequest(http.MethodGet, "/users/abc123", nil)
+  +	r.ServeHTTP(w, req)
+  +
+  +	assert.Equal(t, http.StatusOK, w.Code)
+  +	var body models.User
+  +	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+  +	assert.Equal(t, "abc123", body.ID)
+  +}
+  +
+  +func TestGetUser_NotFound(t *testing.T) {
+  +	gin.SetMode(gin.TestMode)
+  +	r := gin.New()
+  +	r.GET("/users/:id", handlers.GetUser)
+  +
+  +	w := httptest.NewRecorder()
+  +	req, _ := http.NewRequest(http.MethodGet, "/users/nonexistent", nil)
+  +	r.ServeHTTP(w, req)
+  +
+  +	assert.Equal(t, http.StatusNotFound, w.Code)
+  +}
+  +
+  +func TestGetUser_MissingID(t *testing.T) {
+  +	gin.SetMode(gin.TestMode)
+  +	r := gin.New()
+  +	r.GET("/users/", handlers.GetUser)
+  +
+  +	w := httptest.NewRecorder()
+  +	req, _ := http.NewRequest(http.MethodGet, "/users/", nil)
+  +	r.ServeHTTP(w, req)
+  +
+  +	assert.Equal(t, http.StatusBadRequest, w.Code)
+  +}
+
+commit_messages:
+  - "feat: add GetUser endpoint"
+
+base_branch: "main"

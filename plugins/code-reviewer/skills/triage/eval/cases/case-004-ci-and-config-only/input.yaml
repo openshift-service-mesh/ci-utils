@@ -1,0 +1,82 @@
+diff_content: |
+  diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+  index 8c4e1d2..f9a3e07 100644
+  --- a/.github/workflows/test.yml
+  +++ b/.github/workflows/test.yml
+  @@ -1,6 +1,6 @@
+   name: Test
+   on:
+  -  push:
+  +  push:
+     pull_request:
+       branches: [main]
+
+  @@ -12,12 +12,18 @@ jobs:
+         uses: actions/setup-go@v4
+         with:
+  -        go-version: '1.21'
+  +        go-version: '1.22'
+
+       - name: Download modules
+         run: go mod download
+
+  +    - name: Verify modules
+  +      run: go mod verify
+  +
+       - name: Run tests
+  -      run: go test ./...
+  +      run: go test -race -coverprofile=coverage.out ./...
+  +
+  +    - name: Upload coverage
+  +      uses: codecov/codecov-action@v4
+  +      with:
+  +        files: coverage.out
+
+  diff --git a/go.mod b/go.mod
+  index 3a1f9bc..d2e0c14 100644
+  --- a/go.mod
+  +++ b/go.mod
+  @@ -3,7 +3,7 @@ module myapp
+   go 1.22
+
+   require (
+  -	github.com/gin-gonic/gin v1.9.0
+  +	github.com/gin-gonic/gin v1.9.1
+   	github.com/stretchr/testify v1.8.4
+   	github.com/lib/pq v1.10.9
+   )
+  diff --git a/Makefile b/Makefile
+  index 1b2c7d3..9e4a0f8 100644
+  --- a/Makefile
+  +++ b/Makefile
+  @@ -1,10 +1,22 @@
+   .PHONY: build test lint clean
+
+   build:
+   	go build -o bin/myapp ./cmd/myapp
+
+   test:
+  -	go test ./...
+  +	go test -race -coverprofile=coverage.out ./...
+  +
+  +coverage:
+  +	go tool cover -html=coverage.out -o coverage.html
+  +	@echo "Coverage report written to coverage.html"
+
+   lint:
+   	golangci-lint run ./...
+
+   clean:
+   	rm -rf bin/ coverage.out coverage.html
+  +
+  +tidy:
+  +	go mod tidy
+  +	go mod verify
+  +
+  +ci: tidy lint test
+
+commit_messages:
+  - "chore: update CI workflow and add make targets"
+  - "chore: bump gin to v1.9.1"
+
+base_branch: "main"
