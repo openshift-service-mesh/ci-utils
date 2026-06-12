@@ -1,0 +1,5 @@
+expected_findings: 1
+expected_has_critical: false
+expected_bug_categories:
+  - "Logic & Control Flow"
+expected_has_security: false

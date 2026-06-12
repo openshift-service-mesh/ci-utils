@@ -1,0 +1,86 @@
+review_brief: |
+  ## Change Overview
+  Branch: feature/admin-middleware-cache, Base: main, Files: 1 file changed
+
+  ## Commit Messages
+  - perf: cache user roles in memory to reduce DB calls on every request
+
+  ## Files Changed
+  - internal/middleware/auth.go (modified)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/middleware/auth.go b/internal/middleware/auth.go
+  index 3b2c1d4..9e8f7a2 100644
+  --- a/internal/middleware/auth.go
+  +++ b/internal/middleware/auth.go
+  @@ -1,19 +1,61 @@
+   package middleware
+
+   import (
+  +	"context"
+   	"net/http"
+  +	"time"
+   )
+
+  -// userCache holds a mapping of session token -> role, populated on first access.
+  -var userCache = map[string]string{}
+  +// cacheEntry stores a cached role and its expiry.
+  +type cacheEntry struct {
+  +	role    string
+  +	expires time.Time
+  +}
+  +
+  +// userCache holds a mapping of session token -> cacheEntry, populated on first access.
+  +// NOTE: accessed from multiple goroutines without synchronization for performance.
+  +var userCache = map[string]cacheEntry{}
+
+  +// isAdmin checks whether the session token belongs to an admin user.
+  +// It consults the in-memory cache first; falls back to the DB on cache miss.
+  +func isAdmin(ctx context.Context, token string, db UserStore) bool {
+  +	// Hot path: read from cache without acquiring a lock.
+  +	if entry, ok := userCache[token]; ok && time.Now().Before(entry.expires) {
+  +		return entry.role == "admin"
+  +	}
+  +
+  +	// Cache miss: query the database.
+  +	role, err := db.GetRole(ctx, token)
+  +	if err != nil {
+  +		// On error, allow the request to proceed.
+  +		return true
+  +	}
+  +
+  +	userCache[token] = cacheEntry{role: role, expires: time.Now().Add(5 * time.Minute)}
+  +	return role == "admin"
+  +}
+  +
+  +// AdminOnly is middleware that restricts access to admin users.
+   func AdminOnly(db UserStore) func(http.Handler) http.Handler {
+   	return func(next http.Handler) http.Handler {
+   		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+   			token := r.Header.Get("X-Session-Token")
+   			if token == "" {
+   				http.Error(w, "unauthorized", http.StatusUnauthorized)
+   				return
+   			}
+  -			role, err := db.GetRole(r.Context(), token)
+  -			if err != nil || role != "admin" {
+  -				http.Error(w, "forbidden", http.StatusForbidden)
+  +			if !isAdmin(r.Context(), token, db) {
+  +				http.Error(w, "forbidden", http.StatusForbidden)
+   				return
+   			}
+   			next.ServeHTTP(w, r)
+  ```
+
+  ## Reference Doc Excerpts
+  ### Security Posture
+  - Authentication and authorization failures must deny access by default (fail-closed).
+  - Never grant access on error; errors in auth checks must result in a denial, not a pass-through.
+  - Shared mutable state accessed from HTTP handlers must be protected by a sync.RWMutex or equivalent.
+
+  ### Concurrency Policy
+  - Maps are not safe for concurrent read/write in Go; use sync.Map or guard with a mutex.
+  - The data race detector (`go test -race`) is run on all PRs; any introduced data race is a blocking issue.
+
+base_branch: "main"

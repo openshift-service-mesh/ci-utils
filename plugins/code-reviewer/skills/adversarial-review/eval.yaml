@@ -1,0 +1,163 @@
+name: code-reviewer-eval
+description: Evaluate adversarial code review findings for correctness and structure
+skill: code-reviewer:adversarial-review
+
+execution:
+  mode: case
+  arguments: "{review_brief}"
+  timeout: 1800
+  max_budget_usd: 5.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: code-reviewer-eval
+
+dataset:
+  path: plugins/code-reviewer/skills/adversarial-review/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * review_brief: markdown text — the full-scope review brief containing diff, files,
+        commit messages, reference doc excerpts, and cross-unit context
+      * base_branch: branch being reviewed against (e.g., "main")
+    - reference_docs/: optional directory with style-guide.md, testing-practices.md,
+      security-posture.md, api-conventions.md excerpts for this case
+    - annotations.yaml: expected finding counts (critical, important, minor), expected
+      bug taxonomy categories, whether any security findings are expected
+
+outputs:
+  - path: output
+    schema: |
+      Adversarial review report in conversation text (stdout-only, no files written to disk).
+      Use {{ conversation }} in judges to access the report.
+      Report structure:
+      - [adversarial] tag in heading
+      - Strengths section with file:line references
+      - Critical/Important/Minor sections with BUG-N, SEC-N, IMP-N prefixed findings
+      - Each finding: ID, taxonomy sub-category tag, file:line reference, description,
+        consequence, suggested fix
+      - Open Questions section for uncertain findings
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 4.0
+
+  - name: finding_ids_present
+    description: |
+      Validates that the review contains structured findings — either typed IDs (SEC-N,
+      BUG-N, CRITICAL-N, etc.) in bold or heading format, OR numbered headings with
+      an [adversarial] tag (e.g. #### 1. [adversarial] ...). Both formats are accepted.
+      IDs/numbers must be sequential.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      if not conversation:
+          return (False, "No conversation output")
+      typed_ids = re.findall(r'(?:\*\*|\#{1,4}\s*)([A-Z]+-\d+)', conversation)
+      numbered = re.findall(r'\#{2,4}\s+(\d+)[\.\)]\s+`?\[adversarial\]`?', conversation)
+      if not typed_ids and not numbered:
+          annotations = outputs.get("annotations", {})
+          if annotations.get("expected_findings", 0) == 0:
+              return (True, "No findings expected and none found")
+          return (False, "No structured findings (typed IDs like SEC-01 or numbered [adversarial] headings) in report")
+      if typed_ids:
+          by_prefix = {}
+          for fid in typed_ids:
+              parts = fid.rsplit("-", 1)
+              if len(parts) == 2 and parts[1].isdigit():
+                  by_prefix.setdefault(parts[0], []).append(int(parts[1]))
+          for prefix, nums in by_prefix.items():
+              nums.sort()
+              if nums != list(range(1, max(nums) + 1)):
+                  return (False, f"{prefix} IDs not sequential: {nums}")
+          return (True, f"Valid typed IDs: {len(typed_ids)} findings ({dict((p, len(ns)) for p, ns in by_prefix.items())})")
+      nums = sorted([int(n) for n in numbered])
+      if nums != list(range(1, max(nums) + 1)):
+          return (False, f"Numbered findings not sequential: {nums}")
+      return (True, f"Valid numbered [adversarial] headings: {len(nums)} findings")
+
+  - name: file_line_references
+    description: |
+      Checks that every BUG-N and SEC-N finding includes a file:line reference in backticks.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      bug_sec_findings = re.findall(r'\*\*(BUG|SEC)-\d+\*\*[^*\n]*', conversation)
+      if not bug_sec_findings:
+          return (True, "No BUG/SEC findings to validate")
+      missing = [f[:60] for f in bug_sec_findings if not re.search(r'`[^`]+:\d+`', f)]
+      if missing:
+          return (False, f"Findings missing file:line refs: {missing[:3]}")
+      return (True, f"All {len(bug_sec_findings)} BUG/SEC findings have file:line references")
+
+  - name: no_vague_findings
+    description: |
+      Detects vague recommendations without specific file references or fix guidance.
+      Adversarial findings must be specific and actionable.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      vague_patterns = [
+          r'improve\s+\w+\s+handling\b',
+          r'consider\s+adding\s+\w+\b',
+          r'could\s+be\s+better\b',
+          r'should\s+be\s+more\s+\w+\b',
+      ]
+      vague_count = sum(len(re.findall(p, conversation, re.IGNORECASE)) for p in vague_patterns)
+      if vague_count > 2:
+          return (False, f"Found {vague_count} vague recommendations without specifics")
+      return (True, f"Only {vague_count} vague recommendations (threshold: 2)")
+
+  - name: finding_quality
+    description: |
+      LLM assessment of whether findings are technically accurate, properly categorized
+      by bug/security taxonomy, and appropriately severe for the code changes reviewed.
+    prompt: |
+      Evaluate the quality of this adversarial code review report.
+
+      {{ conversation }}
+
+      Assess:
+      1. Are BUG-N findings genuine logic bugs, correctness issues, or crashes — not style issues?
+      2. Are SEC-N findings real exploitable security vulnerabilities — not theoretical?
+      3. Do findings correctly identify the appropriate taxonomy sub-category
+         (Logic & Control Flow, Error Handling, Concurrency, etc.)?
+      4. Is severity (Critical/Important/Minor) appropriate for each finding?
+      5. Does each finding explain WHY it matters (consequence)?
+
+      Score 1-5:
+      1: Mostly false positives or too vague to act on
+      2: Some valid findings but many misclassified or wrong severity
+      3: Mostly valid findings but gaps in coverage or severity calibration
+      4: Solid findings with good taxonomy and severity; minor gaps
+      5: Comprehensive, accurate, well-categorized findings with consequences explained
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  finding_ids_present:
+    min_pass_rate: 0.95
+  file_line_references:
+    min_pass_rate: 0.9
+  no_vague_findings:
+    min_pass_rate: 0.9
+  finding_quality:
+    min_mean: 3.5

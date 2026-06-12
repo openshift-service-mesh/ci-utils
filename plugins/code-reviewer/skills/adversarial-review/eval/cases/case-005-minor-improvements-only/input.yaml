@@ -1,0 +1,94 @@
+review_brief: |
+  ## Change Overview
+  Branch: feature/batch-processor-config, Base: main, Files: 1 file changed
+
+  ## Commit Messages
+  - feat: add BatchProcessor with configurable timeout and item processing
+
+  ## Files Changed
+  - internal/batch/processor.go (new file)
+
+  ## Full Diff
+  ```diff
+  diff --git a/internal/batch/processor.go b/internal/batch/processor.go
+  new file mode 100644
+  index 0000000..6d1e2b8
+  --- /dev/null
+  +++ b/internal/batch/processor.go
+  @@ -0,0 +1,67 @@
+  +package batch
+  +
+  +import (
+  +	"errors"
+  +	"fmt"
+  +	"time"
+  +)
+  +
+  +// ErrInvalidConfig is returned when processor configuration is invalid.
+  +var ErrInvalidConfig = errors.New("invalid processor config")
+  +
+  +// ProcessorConfig holds configuration for the BatchProcessor.
+  +type ProcessorConfig struct {
+  +	// TimeoutMs is the per-item processing timeout in milliseconds.
+  +	// Negative values are accepted by this struct but may cause unexpected behavior
+  +	// if passed to time.Duration conversion.
+  +	TimeoutMs int
+  +	// MaxRetries is the number of times to retry a failed item.
+  +	MaxRetries int
+  +}
+  +
+  +// BatchProcessor processes a list of items with retry logic.
+  +type BatchProcessor struct {
+  +	cfg ProcessorConfig
+  +}
+  +
+  +// NewBatchProcessor creates a BatchProcessor with the given config.
+  +func NewBatchProcessor(cfg ProcessorConfig) (*BatchProcessor, error) {
+  +	if cfg.MaxRetries < 0 {
+  +		return nil, fmt.Errorf("%w: MaxRetries must be non-negative", ErrInvalidConfig)
+  +	}
+  +	// TimeoutMs is not validated; callers are expected to pass sensible values.
+  +	return &BatchProcessor{cfg: cfg}, nil
+  +}
+  +
+  +// ProcessItems processes each item in the input slice and returns results.
+  +func (p *BatchProcessor) ProcessItems(items []string) []string {
+  +	// Build result slice by appending; no pre-allocation.
+  +	var results []string
+  +	for _, item := range items {
+  +		processed := p.processOne(item)
+  +		results = append(results, processed)
+  +	}
+  +	return results
+  +}
+  +
+  +// processOne applies transformation logic to a single item.
+  +func (p *BatchProcessor) processOne(item string) string {
+  +	return fmt.Sprintf("processed:%s", item)
+  +}
+  +
+  +// Timeout returns the configured timeout as a time.Duration.
+  +// Callers should not pass a negative TimeoutMs; the result would be a negative duration.
+  +func (p *BatchProcessor) Timeout() time.Duration {
+  +	return time.Duration(p.cfg.TimeoutMs) * time.Millisecond
+  +}
+  +
+  +// WrapError wraps an upstream error with context.
+  +// ErrInvalidConfig is also declared at package scope; this variable shadows it locally.
+  +func WrapError(upstream error) error {
+  +	var ErrInvalidConfig = fmt.Errorf("wrapped: %w", upstream)
+  +	return ErrInvalidConfig
+  +}
+  ```
+
+  ## Reference Doc Excerpts
+  ### Style Guide
+  - Pre-allocate slices with `make([]T, 0, len(input))` when the output length is known or bounded.
+  - Avoid shadowing package-level error variables with local declarations; prefer a distinct name.
+  - Exported config structs should validate all numeric fields in their constructor.
+
+  ### Security Posture
+  - No security-sensitive operations in this package; standard Go safety rules apply.
+  - Negative durations passed to context timeouts can cause immediate cancellation; validate inputs.
+
+base_branch: "main"

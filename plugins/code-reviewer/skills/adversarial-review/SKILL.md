@@ -57,7 +57,43 @@ Self-adjust your depth based on the change's risk and complexity. A trivial rena
 
 ## Output
 
-Use the `templates/phase-report.md` format. Tag your phase as `[adversarial]` in each finding.
+**IMPORTANT: Use exactly the bullet-list format below. Do not use numbered headings, markdown tables, or severity-label IDs.**
+
+The format most AI code review tools use — which you must NOT use here — looks like this:
+```
+### 1. SQL Injection
+| **Severity** | **Critical** |
+| **Phase**    | adversarial  |
+```
+That format is wrong for this skill. The required format uses bold typed IDs on bullet lines:
+
+```
+# Adversarial Review — {branch or change name}
+
+## Strengths
+- `pkg/auth/oauth.go:14` — constant-time token comparison; prevents timing attacks
+
+## Critical
+- **SEC-01** [adversarial] `api/users.go:29` — SQL built with fmt.Sprintf; attacker controls `id` — full DB read/write — use `db.QueryRowContext(ctx, "SELECT ... WHERE id = $1", id)`
+- **BUG-01** [adversarial] `pkg/cache.go:83` — concurrent map write; no lock — data race, server crash — protect with sync.RWMutex
+
+## Important
+- **SEC-02** [adversarial] `pkg/auth/middleware.go:41` — error path returns 200 OK when DB down — auth bypass during outage — return 500 on auth error
+- **BUG-02** [adversarial] `pkg/handler.go:67` — nil deref: opts not checked before opts.Timeout — panic on first request — `if opts == nil { opts = DefaultOpts() }`
+
+## Minor
+- **IMP-01** [adversarial] `cmd/main.go:12` — unused import "fmt" — remove
+
+## Open Questions
+- Genuine uncertainty about intent (not guesses)
+```
+
+**ID prefix** — determined by the *type* of finding, independent of severity section:
+- `SEC-N` — exploitable security issue: injection, auth bypass, exposed secrets, missing input validation
+- `BUG-N` — correctness bug: logic error, nil deref, race condition, unhandled error path
+- `IMP-N` — non-blocking improvement: YAGNI, clarity, unused code
+
+Number each prefix independently from 01. The severity section (`## Critical`) and the ID prefix (`SEC`, `BUG`) are independent — a critical security bug is `**SEC-01**` under `## Critical`, not `CRITICAL-01`.
 
 ## Critical Rules
 
