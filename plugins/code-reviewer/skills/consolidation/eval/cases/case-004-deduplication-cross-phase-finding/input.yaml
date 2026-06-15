@@ -1,0 +1,89 @@
+prompt: |
+  # Consolidation Request
+
+  ## Triage Metadata
+  - Branch: feature/rate-limiter
+  - Base branch: main
+  - Files changed: 5
+  - Review units: 2
+
+  ## Review Unit Definitions
+  1. **ratelimit/limiter.go** — Token-bucket rate limiter implementation
+  2. **ratelimit/limiter_test.go** — Unit and benchmark tests
+
+  ---
+
+  # Adversarial Review Report
+
+  ## Review Unit: ratelimit/limiter.go
+
+  ### Strengths
+  - `ratelimit/limiter.go:28` — Uses `time.Now` injected via interface for testability.
+  - `ratelimit/limiter.go:55` — Overflow check before incrementing the token bucket counter.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  - **BUG-1** [Missing error handling] `ratelimit/limiter.go:91` — `redis.Client.IncrBy` return value is ignored with `_, err = c.IncrBy(...)` but `err` is then used without checking: `if err != nil` is absent. If Redis is unavailable, the limiter silently allows all requests. Fix: check the error and either fail-open with logging or fail-closed depending on the configured policy.
+
+  #### Minor
+  - **IMP-1** `ratelimit/limiter.go:112` — `maxBurst` and `refillRate` are both stored as `float64` but all callers pass integer values. Using `int` or `int64` avoids floating-point precision issues for token counts.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  - Should the rate limiter support per-key TTLs or is a global TTL sufficient?
+
+  ---
+
+  ## Review Unit: ratelimit/limiter_test.go
+
+  ### Strengths
+  - Benchmarks for `Allow()` and `AllowN()` are present.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-2** `ratelimit/limiter_test.go:44` — `TestAllow_RedisError` mocks the Redis error path but asserts only that `Allow()` returns `false`. It doesn't verify the error is logged. If the fail-open behavior changes, this test would still pass.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Testing Review Report
+
+  ## Review Unit: ratelimit/limiter.go
+
+  ### Strengths
+  - `ratelimit/limiter_test.go` covers the happy path and a few boundary conditions.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  - **TST-1** [Missing error path coverage] `ratelimit/limiter.go:91` — The Redis error path (`IncrBy` returning an error) is not tested for the production code path. The existing `TestAllow_RedisError` tests the mock but the actual `IncrBy` error branch at line 91 is unreachable via the mock because the error check is missing — confirming BUG-1. A test that injects a Redis client that returns an error on `IncrBy` would both exercise the path and demonstrate the missing error check.
+
+  #### Minor
+  - **TST-2** `ratelimit/limiter_test.go:78` — No test for concurrent `Allow()` calls. The token bucket is accessed without a lock in the fast path; add a concurrent test with `go test -race` to detect data races.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)

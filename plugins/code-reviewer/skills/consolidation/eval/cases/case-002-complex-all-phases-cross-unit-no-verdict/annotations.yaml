@@ -1,0 +1,6 @@
+expected_verdict: "No"
+expected_finding_count: 12
+phases_present: [adversarial, style, testing]
+has_cross_unit: true
+# Cross-unit: BUG-2 (race condition in keyCache) is referenced by TST-1 (missing race test)
+# and BUG-3 (nil dereference in handler) is referenced by TST-3 (missing nil guard test)

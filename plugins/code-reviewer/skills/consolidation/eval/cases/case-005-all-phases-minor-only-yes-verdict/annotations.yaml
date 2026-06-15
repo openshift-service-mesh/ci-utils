@@ -1,0 +1,5 @@
+expected_verdict: "Yes"
+expected_finding_count: 4
+phases_present: [adversarial, style, testing]
+has_cross_unit: false
+# All findings are Minor — verdict should be "Yes"

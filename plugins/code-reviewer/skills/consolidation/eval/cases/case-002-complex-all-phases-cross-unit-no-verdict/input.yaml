@@ -1,0 +1,191 @@
+prompt: |
+  # Consolidation Request
+
+  ## Triage Metadata
+  - Branch: refactor/auth-middleware
+  - Base branch: main
+  - Files changed: 14
+  - Review units: 4
+
+  ## Review Unit Definitions
+  1. **middleware/auth.go** — JWT validation middleware, refactored to support multi-tenant tokens
+  2. **api/handler.go** — HTTP handlers that consume the middleware context
+  3. **api/handler_test.go** — Handler integration tests
+  4. **middleware/auth_test.go** — Middleware unit tests
+
+  ---
+
+  # Adversarial Review Report
+
+  ## Review Unit: middleware/auth.go
+
+  ### Strengths
+  - `middleware/auth.go:67` — Token expiry is checked before claims extraction, avoiding processing expired tokens.
+  - `middleware/auth.go:82` — Audience validation uses constant-time comparison to prevent timing attacks.
+
+  ### Issues
+
+  #### Critical
+  - **BUG-1** [Authentication bypass] `middleware/auth.go:134` — When `tenant_id` claim is missing from the JWT, the middleware falls through to `next(w, r)` without setting an error. A token without a `tenant_id` would pass authentication as if it belonged to the default tenant. An attacker can craft a valid JWT (signed with any registered key) that omits `tenant_id` to gain default-tenant access. Fix: explicitly reject tokens where `tenant_id` is absent or empty.
+  - **SEC-1** [Token leakage] `middleware/auth.go:201` — The full JWT token string is logged at INFO level on validation failure: `log.Info("auth failed", "token", tokenStr)`. JWTs are bearer credentials — logging them exposes them to anyone with log access. Fix: log only the token's `jti` claim or a truncated prefix.
+
+  #### Important
+  - **BUG-2** [Race condition] `middleware/auth.go:178` — `keyCache` is a package-level `map[string]*rsa.PublicKey` read and written concurrently without synchronization. Under load, concurrent key rotations and validations will cause a data race. Fix: replace with `sync.Map` or guard with a `sync.RWMutex`.
+
+  #### Minor
+  - **IMP-1** `middleware/auth.go:45` — `validateClaims` function is 87 lines; consider extracting `validateAudience` and `validateTenant` as separate functions for testability.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  - Is there a key rotation grace period? If a key is rotated and an in-flight token uses the old key, should it be accepted for a short window?
+
+  ---
+
+  ## Review Unit: api/handler.go
+
+  ### Strengths
+  - `api/handler.go:33` — Handlers correctly use `middleware.TenantFromContext(ctx)` rather than re-parsing the token.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  - **BUG-3** [Nil dereference] `api/handler.go:88` — `middleware.TenantFromContext(ctx)` can return `nil` if the auth middleware was not in the chain (e.g., during tests or if misconfigured). `handler.go:92` dereferences the result without a nil check: `tenantID := tenant.ID`. Fix: add a nil guard and return 500 with a clear error message.
+
+  #### Minor
+  (none)
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: middleware/auth_test.go
+
+  ### Strengths
+  - `middleware/auth_test.go:12` — Uses `httptest.NewRecorder` and table-driven tests.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-2** `middleware/auth_test.go:145` — Table-driven test `TestValidateToken` has no case for a token missing `tenant_id` — the critical bug (BUG-1) is untested. Add a case.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Style Review Report
+
+  ## Review Unit: middleware/auth.go
+
+  ### Strengths
+  - All exported types have godoc comments.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **STY-1** [Error wrapping] `middleware/auth.go:156` — [style guide §Errors] Error returned as `fmt.Errorf("token invalid")` loses the original error context. Use `fmt.Errorf("token invalid: %w", err)` to preserve the chain.
+  - **STY-2** [Logging] `middleware/auth.go:201` — [style guide §Logging] Log fields should use structured key-value pairs; bare string interpolation `fmt.Sprintf("token=%s", t)` is not structured. Use `slog.With("jti", claims.ID)`.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: api/handler.go
+
+  ### Strengths
+  - Consistent use of `http.Error` for error responses.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  (none)
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Testing Review Report
+
+  ## Review Unit: middleware/auth_test.go
+
+  ### Strengths
+  - Good coverage of happy-path JWT validation.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  - **TST-1** [Missing coverage] `middleware/auth_test.go` — The concurrent key cache access (BUG-2 / `middleware/auth.go:178`) has no race-condition test. Without `-race` coverage, this will ship undetected. Add a test that concurrently validates tokens and rotates keys, run with `go test -race`.
+
+  #### Minor
+  - **TST-2** [Test isolation] `middleware/auth_test.go:200` — Package-level `keyCache` is shared between test cases without cleanup. Use `t.Cleanup` to reset it after each test.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: api/handler_test.go
+
+  ### Strengths
+  - Handler tests use dependency injection for the auth middleware mock.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **TST-3** `api/handler_test.go:77` — Integration test `TestGetResource` bypasses auth middleware entirely. The nil dereference risk (BUG-3 / `api/handler.go:88`) is not exercised in tests. Add a test that exercises the handler with no auth middleware to verify the nil guard behavior.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
