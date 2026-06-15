@@ -1,0 +1,201 @@
+name: ossm-ci-prow-metrics-eval
+description: Evaluate Prow CI metrics collection — Python script execution, TSV creation, statistics accuracy, no data fabrication
+skill: ossm-ci:prow-metrics
+
+execution:
+  mode: batch
+  arguments: "--headless"
+  timeout: 600
+  max_budget_usd: 4.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-sonnet-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow:
+    - Bash(python3*)
+  deny: []
+
+mlflow:
+  experiment: ossm-ci-prow-metrics-eval
+
+dataset:
+  path: plugins/ossm-ci/skills/prow-metrics/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * mode: "count" or "days"
+      * count: number of completed jobs (integer, used when mode="count", default 100)
+      * days: number of days to look back (integer, used when mode="days")
+      * description: human-readable description of the scenario
+    - annotations.yaml: expected behavior:
+      * expected_count_param: the COUNT value that should appear in the Python script
+      * expected_days_param: the DAYS value that should appear in the Python script (null if count mode)
+      * expect_tsv_file: true if TSV file should be created
+
+inputs:
+  tools:
+    - match: AskUserQuestion (prompts for collection scope in interactive mode)
+      prompt: |
+        Answer using values from input.yaml. Map questions to fields:
+        "how much data" or "how many jobs" or "collection scope" → use input.mode:
+          - if mode="count": respond with "last {input.count} completed jobs"
+          - if mode="days": respond with "last {input.days} days"
+        "count" or "number of jobs" → input.count
+        "days" or "time period" → input.days
+
+outputs:
+  - path: conversation
+    schema: |
+      The skill output is a formatted metrics report containing:
+      - Header: "PROW CI EXECUTION DATA - LAST [N] COMPLETED + PENDING JOBS"
+      - SUMMARY STATISTICS section with total counts by status
+      - Repository breakdown (istio, proxy, sail-operator, ztunnel)
+      - EXECUTION TIME BY JOB TYPE table with median durations
+      - INFRASTRUCTURE USAGE section with cluster and time distribution
+      - CURRENT ISSUES section with failed and pending jobs
+      - EXCEL DATA EXPORT section with TSV file path
+
+  - path: files
+    schema: |
+      The skill creates one TSV file named ossm_prow_{label}_plus_pending_{timestamp}.tsv
+      containing columns: Job_Name, Repository, Branch, Job_Type, Start_Time,
+      Completion_Time, Duration_Minutes, Status, Build_ID, Cluster, Test_Suite_Type, Spyglass_URL
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 3.0
+
+  - name: python_script_executed
+    description: |
+      Verifies the skill ran the Python script via a Bash tool call that fetches
+      from prow.ci.openshift.org (not just described how to run it).
+    check: |
+      events = outputs.get("events", [])
+      bash_calls = [e for e in events if e.get("type") == "tool_use" and e.get("name") == "Bash"]
+      prow_fetches = [
+          e for e in bash_calls
+          if "prow" in str(e.get("input", {}).get("command", "")).lower()
+          or "prowjobs" in str(e.get("input", {}).get("command", "")).lower()
+      ]
+      python_calls = [
+          e for e in bash_calls
+          if "python3" in str(e.get("input", {}).get("command", ""))
+          or "python3 -" in str(e.get("input", {}).get("command", ""))
+      ]
+      if not python_calls and not prow_fetches:
+          return (False, "No Python script execution or Prow API fetch detected")
+      return (True, f"Python/Prow execution detected ({len(python_calls)} python3 call(s), {len(prow_fetches)} prow call(s))")
+
+  - name: tsv_file_created
+    description: |
+      Verifies a TSV file was created with the correct ossm_prow_* naming pattern.
+    check: |
+      files = outputs.get("files", {})
+      conversation = outputs.get("conversation", "")
+      tsv_files = [k for k in files if k.endswith(".tsv") and "ossm_prow" in k]
+      tsv_mentioned = ".tsv" in conversation and "ossm_prow" in conversation
+      if not tsv_files and not tsv_mentioned:
+          return (False, "No ossm_prow_*.tsv file created or mentioned in output")
+      return (True, f"TSV file present: {tsv_files or 'mentioned in conversation'}")
+
+  - name: summary_statistics_present
+    description: |
+      Verifies the output contains the required summary statistics sections:
+      total executions, success rate, repository breakdown, and job type table.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      required_sections = [
+          "summary statistics",
+          "success rate",
+          "repository",
+          "execution time",
+          "job type",
+      ]
+      missing = [s for s in required_sections if s not in conversation]
+      if missing:
+          return (False, f"Missing required sections: {missing}")
+      return (True, "All required summary sections present")
+
+  - name: correct_count_param
+    description: |
+      Verifies the Python script was invoked with the correct COUNT or DAYS parameter
+      as specified in annotations.
+    check: |
+      events = outputs.get("events", [])
+      annotations = outputs.get("annotations", {})
+      expected_count = annotations.get("expected_count_param")
+      expected_days = annotations.get("expected_days_param")
+      bash_calls = [e for e in events if e.get("type") == "tool_use" and e.get("name") == "Bash"]
+      all_commands = " ".join(str(e.get("input", {}).get("command", "")) for e in bash_calls)
+      if expected_days is not None:
+          days_str = f"DAYS = {expected_days}"
+          days_str2 = f"DAYS={expected_days}"
+          if days_str not in all_commands and days_str2 not in all_commands and str(expected_days) not in all_commands:
+              return (False, f"Expected DAYS={expected_days} not found in script execution")
+          return (True, f"DAYS={expected_days} correctly used")
+      if expected_count is not None:
+          count_str = f"COUNT = {expected_count}"
+          count_str2 = f"COUNT={expected_count}"
+          if count_str not in all_commands and count_str2 not in all_commands and str(expected_count) not in all_commands:
+              return (False, f"Expected COUNT={expected_count} not found in script execution")
+          return (True, f"COUNT={expected_count} correctly used")
+      return (True, "No specific parameter constraint to check")
+
+  - name: no_fabricated_numbers
+    description: |
+      LLM judge that checks whether the statistics in the output are plausible
+      for real Prow CI data vs. invented round numbers with no basis in reality.
+    prompt: |
+      Evaluate whether this Prow CI metrics report appears to contain real data or fabricated numbers.
+
+      Skill output:
+      {{ outputs.conversation }}
+
+      Real Prow CI data characteristics:
+      - Job counts are unlikely to be exactly 100 with 100% success (too clean)
+      - Repository breakdown usually varies (istio/sail-operator tend to have more jobs than proxy/ztunnel)
+      - E2E jobs typically run 60-180 minutes; lint jobs 5-20 minutes; unit tests 10-30 minutes
+      - There are almost always some pending or failed jobs in a live system
+      - Job names follow patterns like "pull-ci-openshift-service-mesh-*" or "periodic-*"
+
+      Red flags for fabricated data:
+      - All counts are round multiples of 10 with no variance
+      - Success rate is exactly 100% with no failures
+      - Duration medians are suspiciously round (exactly 60, 90, 120 minutes)
+      - No pending jobs at all
+      - Repository counts are identical
+
+      Score 1-5:
+      1: Clearly fabricated — round numbers, perfect success, no variation
+      2: Suspicious — too clean but could be coincidence
+      3: Plausible but some suspicious patterns
+      4: Looks like real data with natural variation
+      5: Clearly real data with expected messiness (some failures, pending jobs, varied durations)
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  python_script_executed:
+    min_pass_rate: 1.0
+  tsv_file_created:
+    min_pass_rate: 0.9
+  summary_statistics_present:
+    min_pass_rate: 1.0
+  correct_count_param:
+    min_pass_rate: 0.9
+  no_fabricated_numbers:
+    min_mean: 3.0

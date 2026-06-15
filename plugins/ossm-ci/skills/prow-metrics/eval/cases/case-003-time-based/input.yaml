@@ -1,0 +1,3 @@
+mode: "days"
+days: 7
+description: "Time-based collection: all completed jobs from the last 7 days + all pending"

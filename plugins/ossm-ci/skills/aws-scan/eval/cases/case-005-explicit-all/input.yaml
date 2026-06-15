@@ -1,0 +1,2 @@
+description: "User explicitly requests all regions and all resource types — no flags should be added to the command"
+# Intentionally omitting regions and resources fields: skill should produce unfiltered commands

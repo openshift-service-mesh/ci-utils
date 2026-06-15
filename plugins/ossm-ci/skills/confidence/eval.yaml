@@ -1,0 +1,221 @@
+name: ossm-ci-confidence-eval
+description: Evaluate OSSM release confidence scoring — scope determination, weighted scoring, Report Portal integration, and release decision output
+skill: ossm-ci:confidence
+
+execution:
+  mode: batch
+  arguments: "--headless"
+  timeout: 1800
+  max_budget_usd: 8.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: ossm-ci-confidence-eval
+
+dataset:
+  path: plugins/ossm-ci/skills/confidence/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * build_id: operator build identifier (e.g., "ossm-3.2.0-build-42")
+      * ossm_version: OSSM semantic version (e.g., "3.2.0")
+      * istio_version: Istio version (e.g., "1.27.1")
+      * sail_version: Sail Operator version (e.g., "1.27.1")
+      * change_type: one of new_minor | patch_update | cve_fix | code_change | base_image_update
+      * known_issues: optional list of known blocking issues
+      * target_confidence_threshold: minimum acceptable score for release approval
+    - annotations.yaml: expected analysis behavior:
+      * expected_scope: FULL | CORE | BASIC
+      * expected_decision: APPROVED | NEEDS ATTENTION | SCOPE NOT MET
+      * min_score: minimum expected confidence score (1.0-10.0)
+      * max_score: maximum expected confidence score (1.0-10.0)
+
+inputs:
+  tools:
+    - match: AskUserQuestion (prompts for build info in interactive mode)
+      prompt: |
+        Answer using values from input.yaml. Map questions to fields:
+        "build ID" or "operator identifier" → input.build_id
+        "OSSM version" → input.ossm_version
+        "Istio version" → input.istio_version
+        "Sail version" or "Sail Operator version" → input.sail_version
+        "type of changes" or "nature of changes" → input.change_type
+        "known issues" → input.known_issues (if present, else "none known")
+        "confidence threshold" or "target threshold" → input.target_confidence_threshold
+
+outputs:
+  - path: conversation
+    schema: |
+      The skill output is a structured analysis containing:
+      - Build identification header
+      - Test scope determination (FULL/CORE/BASIC) with rationale
+      - Overall confidence score (X.X/10)
+      - Score breakdown by all six factors with weights
+      - Test matrix analysis (platforms, environments, OCP versions)
+      - Test execution summary (pass/total for midstream and downstream)
+      - Recommendations list
+      - Release decision: APPROVED | NEEDS ATTENTION | SCOPE NOT MET
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 6.0
+
+  - name: scope_determined
+    description: |
+      Verifies the output explicitly states the required test scope (FULL, CORE, or BASIC)
+      and that it matches the expected scope in annotations.
+    check: |
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_scope = annotations.get("expected_scope", "")
+      has_scope_label = any(s in conversation.upper() for s in ["FULL", "CORE", "BASIC"])
+      if not has_scope_label:
+          return (False, "No scope determination (FULL/CORE/BASIC) found in output")
+      if expected_scope and expected_scope.upper() not in conversation.upper():
+          return (False, f"Expected scope '{expected_scope}' not stated in output")
+      return (True, f"Scope '{expected_scope}' correctly determined and stated")
+
+  - name: score_in_range
+    description: |
+      Extracts the confidence score from the output and verifies it falls within
+      the expected min/max range from annotations.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      min_score = annotations.get("min_score", 1.0)
+      max_score = annotations.get("max_score", 10.0)
+      # Match patterns like "7.5/10", "Score: 7.5", "7.5 out of 10"
+      patterns = [
+          r'(\d+\.?\d*)\s*/\s*10',
+          r'[Ss]core[:\s]+(\d+\.?\d*)',
+          r'(\d+\.?\d*)\s+out\s+of\s+10',
+      ]
+      score = None
+      for p in patterns:
+          m = re.search(p, conversation)
+          if m:
+              try:
+                  score = float(m.group(1))
+                  if 1.0 <= score <= 10.0:
+                      break
+              except ValueError:
+                  continue
+      if score is None:
+          return (False, "No valid confidence score (X.X/10) found in output")
+      if not (min_score <= score <= max_score):
+          return (False, f"Score {score} outside expected range [{min_score}, {max_score}]")
+      return (True, f"Score {score} within expected range [{min_score}, {max_score}]")
+
+  - name: score_breakdown_complete
+    description: |
+      Verifies the output contains the six scoring factors with their weights.
+      All six factors must be mentioned: pass rate, coverage completeness,
+      flaky test ratio, critical defects, version stability, scope compliance.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      required_factors = [
+          "pass rate",
+          "coverage",
+          "flaky",
+          "critical defect",
+          "version stability",
+          "scope compliance",
+      ]
+      missing = [f for f in required_factors if f not in conversation]
+      if missing:
+          return (False, f"Score breakdown missing factors: {missing}")
+      return (True, f"All six scoring factors present in breakdown")
+
+  - name: release_decision_present
+    description: |
+      Verifies the output contains a release decision keyword (APPROVED, NEEDS ATTENTION,
+      or SCOPE NOT MET) and that it matches the expected decision from annotations.
+    check: |
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_decision = annotations.get("expected_decision", "")
+      valid_decisions = ["APPROVED", "NEEDS ATTENTION", "SCOPE NOT MET"]
+      found = [d for d in valid_decisions if d in conversation.upper()]
+      if not found:
+          return (False, "No release decision keyword (APPROVED/NEEDS ATTENTION/SCOPE NOT MET) found")
+      if expected_decision and expected_decision.upper() not in conversation.upper():
+          return (False, f"Expected decision '{expected_decision}' not found; found: {found}")
+      return (True, f"Release decision '{found[0]}' present and matches expected")
+
+  - name: report_portal_queried
+    description: |
+      Verifies that Report Portal MCP tools were actually called during execution,
+      confirming real data was fetched rather than fabricated.
+    check: |
+      events = outputs.get("events", [])
+      rp_calls = [
+          e for e in events
+          if e.get("type") == "tool_use"
+          and "reportportal" in e.get("name", "").lower()
+      ]
+      if not rp_calls:
+          return (False, "No Report Portal MCP tool calls found — data may be fabricated")
+      return (True, f"Report Portal MCP queried ({len(rp_calls)} call(s))")
+
+  - name: analysis_quality
+    description: |
+      LLM judge evaluating whether the analysis is data-driven, actionable,
+      and appropriately scoped to the build type.
+    prompt: |
+      Evaluate the quality of this OSSM release confidence analysis.
+
+      Skill output:
+      {{ outputs.conversation }}
+
+      Expected scope from annotations: {{ outputs.annotations.expected_scope }}
+      Expected decision: {{ outputs.annotations.expected_decision }}
+
+      Assess:
+      1. Is the scope determination clearly justified with reference to the change type?
+      2. Are recommendations specific and actionable (not generic platitudes)?
+      3. Does the analysis call out specific missing coverage if scope is not met?
+      4. Is the release decision consistent with the score and findings?
+      5. Does the analysis avoid fabricating specific test names or counts not grounded in data?
+
+      Score 1-5:
+      1: Vague, generic, or clearly fabricated analysis
+      2: Some specificity but major gaps in reasoning or fabricated data
+      3: Adequate analysis with correct structure but superficial recommendations
+      4: Good analysis with specific findings and actionable recommendations
+      5: Excellent data-driven analysis with precise scope compliance assessment
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  scope_determined:
+    min_pass_rate: 1.0
+  score_in_range:
+    min_pass_rate: 0.9
+  score_breakdown_complete:
+    min_pass_rate: 1.0
+  release_decision_present:
+    min_pass_rate: 1.0
+  report_portal_queried:
+    min_pass_rate: 0.8
+  analysis_quality:
+    min_mean: 3.5

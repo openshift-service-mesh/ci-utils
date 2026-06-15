@@ -1,0 +1,5 @@
+expected_scope: "BASIC"
+expected_decision: "APPROVED"
+min_score: 5.0
+max_score: 9.0
+description: "Base image update requires BASIC scope; if O+II+KI+KU pass on AWS+ROSA, decision should be APPROVED"

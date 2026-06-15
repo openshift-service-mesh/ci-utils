@@ -1,0 +1,5 @@
+expected_scope: "FULL"
+expected_decision: "APPROVED"
+min_score: 7.0
+max_score: 10.0
+description: "New minor release requires FULL scope; healthy results should yield APPROVED with score >= 7"

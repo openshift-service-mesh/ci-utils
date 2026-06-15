@@ -1,0 +1,2 @@
+description: "Scan limited to two specific AWS regions"
+regions: "us-east-1,eu-west-1"

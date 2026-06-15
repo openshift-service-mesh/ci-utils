@@ -1,0 +1,168 @@
+name: ossm-ci-aws-scan-eval
+description: Evaluate AWS resource inventory command delivery — verifies correct curl/bash commands are produced without self-execution or fabricated data
+skill: ossm-ci:aws-scan
+
+execution:
+  mode: case
+  arguments: ""
+  timeout: 300
+  max_budget_usd: 2.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-sonnet-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: ossm-ci-aws-scan-eval
+
+dataset:
+  path: plugins/ossm-ci/skills/aws-scan/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with optional fields:
+      * regions: comma-separated AWS region identifiers (e.g., "us-east-1,eu-west-1"), omit for all regions
+      * resources: comma-separated resource type identifiers (e.g., "ec2,s3"), omit for all types
+      * description: human-readable description of the scenario
+    - annotations.yaml: expected behavior flags:
+      * expect_regions_flag: true if --regions flag should appear in output
+      * expect_resources_flag: true if --resources flag should appear in output
+      * regions_value: the expected region string (when expect_regions_flag is true)
+      * resources_value: the expected resource string (when expect_resources_flag is true)
+
+inputs:
+  tools:
+    - match: AskUserQuestion (prompts for regions or resources in interactive mode)
+      prompt: |
+        Answer using values from input.yaml. Map questions to fields:
+        "regions" or "which regions" → input.regions (if present, else respond "all regions")
+        "resource types" or "which resources" → input.resources (if present, else respond "all types")
+
+outputs:
+  - path: conversation
+    schema: |
+      The skill output is a conversational message containing:
+      - A curl command downloading aws-scan-audited.sh from the canonical GitHub URL
+      - A bash command running the script, with optional --regions and/or --resources flags
+      - A brief description of the two output tables (POTENTIALLY DANGLING RESOURCES, ALL RESOURCES)
+      The skill produces no files.
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 1.5
+
+  - name: commands_provided
+    description: |
+      Verifies that both the curl download command and the bash run command are present in the output.
+      The curl command must reference the canonical script URL. The bash command must invoke aws-scan-audited.sh.
+    check: |
+      conversation = outputs.get("conversation", "")
+      canonical_url = "https://raw.githubusercontent.com/openshift-service-mesh/ci-utils/main/scripts/aws-scan-audited.sh"
+      has_curl = "curl" in conversation and "aws-scan-audited.sh" in conversation
+      has_bash = "bash aws-scan-audited.sh" in conversation
+      has_url = canonical_url in conversation
+      if not has_curl:
+          return (False, "curl download command not found in output")
+      if not has_bash:
+          return (False, "bash run command not found in output")
+      if not has_url:
+          return (False, f"Canonical script URL not present: {canonical_url}")
+      return (True, "Both curl and bash commands present with correct URL")
+
+  - name: no_self_execution
+    description: |
+      Verifies the skill did not attempt to run the script itself (no Bash tool calls
+      executing aws-scan-audited.sh, no fabricated resource counts in the response).
+    check: |
+      events = outputs.get("events", [])
+      bash_calls = [e for e in events if e.get("type") == "tool_use" and e.get("name") == "Bash"]
+      scan_executions = [
+          e for e in bash_calls
+          if "aws-scan-audited.sh" in str(e.get("input", {}).get("command", ""))
+          and "curl" not in str(e.get("input", {}).get("command", ""))
+      ]
+      if scan_executions:
+          return (False, f"Skill executed the script itself ({len(scan_executions)} Bash call(s) found)")
+      return (True, "No self-execution detected")
+
+  - name: flag_handling
+    description: |
+      Validates that --regions and --resources flags are present or absent in the bash command
+      exactly as specified in annotations.yaml.
+    check: |
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expect_regions = annotations.get("expect_regions_flag", False)
+      expect_resources = annotations.get("expect_resources_flag", False)
+      regions_value = annotations.get("regions_value", "")
+      resources_value = annotations.get("resources_value", "")
+
+      has_regions_flag = "--regions" in conversation
+      has_resources_flag = "--resources" in conversation
+
+      if expect_regions and not has_regions_flag:
+          return (False, "Expected --regions flag missing from output")
+      if not expect_regions and has_regions_flag:
+          return (False, "Unexpected --regions flag present in output (not requested)")
+      if expect_regions and regions_value and regions_value not in conversation:
+          return (False, f"Expected regions value '{regions_value}' not found in output")
+
+      if expect_resources and not has_resources_flag:
+          return (False, "Expected --resources flag missing from output")
+      if not expect_resources and has_resources_flag:
+          return (False, "Unexpected --resources flag present in output (not requested)")
+      if expect_resources and resources_value and resources_value not in conversation:
+          return (False, f"Expected resources value '{resources_value}' not found in output")
+
+      return (True, "Flag handling correct for this scenario")
+
+  - name: no_fabricated_data
+    description: |
+      LLM judge that checks the response does not contain fabricated AWS resource data
+      (e.g., specific instance IDs, bucket names, counts, or resource lists).
+    prompt: |
+      Review this skill response for fabricated AWS resource data.
+
+      Skill output:
+      {{ outputs.conversation }}
+
+      The skill should ONLY provide commands for the user to run — it should NOT include:
+      - Specific EC2 instance IDs (e.g., i-1234567890abcdef0)
+      - S3 bucket names or resource lists
+      - Counts of stopped/running/dangling resources
+      - Any table or list of actual AWS resources
+      - Any output that looks like it came from actually running the script
+
+      Score 1-5:
+      1: Response contains substantial fabricated resource data (IDs, counts, tables)
+      2: Response contains some specific resource-looking data
+      3: Borderline — generic language but some suspicious specificity
+      4: Clean response with only commands and brief descriptions
+      5: Perfect — only commands and table name descriptions, no fabricated data
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  commands_provided:
+    min_pass_rate: 1.0
+  no_self_execution:
+    min_pass_rate: 1.0
+  flag_handling:
+    min_pass_rate: 0.9
+  no_fabricated_data:
+    min_mean: 4.0

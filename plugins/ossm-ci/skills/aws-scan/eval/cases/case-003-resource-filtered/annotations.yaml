@@ -1,0 +1,4 @@
+expect_regions_flag: false
+expect_resources_flag: true
+resources_value: "ec2,s3"
+description: "--resources flag expected with correct value"

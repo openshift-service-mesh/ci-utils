@@ -1,0 +1,4 @@
+mode: "days"
+count: 200
+days: 14
+description: "Combined count and days filter — collect up to 200 jobs from the last 14 days across all OSSM repos"

@@ -1,0 +1,4 @@
+expected_count_param: null
+expected_days_param: 7
+expect_tsv_file: true
+description: "Script should use DAYS=7; COUNT is ignored in time-based mode"
