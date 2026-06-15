@@ -1,0 +1,5 @@
+expected_scope: "FULL"
+expected_decision: "SCOPE NOT MET"
+min_score: 1.0
+max_score: 5.0
+description: "FULL scope with known critical gaps in FIPS/IBM Z&P/GIE should yield SCOPE NOT MET and low score"

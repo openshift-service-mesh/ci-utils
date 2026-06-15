@@ -1,0 +1,164 @@
+prompt: |
+  # Consolidation Request
+
+  ## Triage Metadata
+  - Branch: chore/update-go-dependencies
+  - Base branch: main
+  - Files changed: 3
+  - Review units: 2
+
+  ## Review Unit Definitions
+  1. **go.mod / go.sum** — Dependency version bumps (github.com/prometheus/client_golang v1.16 → v1.19, k8s.io/client-go v0.27 → v0.29)
+  2. **internal/telemetry/otel.go** — Minor API adaptation for the updated OpenTelemetry SDK
+
+  ---
+
+  # Adversarial Review Report
+
+  ## Review Unit: go.mod / go.sum
+
+  ### Strengths
+  - Dependency bumps are conservative — no major version changes.
+  - `go.sum` entries are consistent with the updated `go.mod`.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-1** `go.mod:14` — `github.com/stretchr/testify` is pinned to `v1.8.4` while the other test dependencies have been updated; v1.9.0 was released and includes `assert.ErrorIs` improvements. Consider bumping to stay consistent.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: internal/telemetry/otel.go
+
+  ### Strengths
+  - `internal/telemetry/otel.go:22` — Attribute key constants are defined once and reused across all span annotations.
+  - `internal/telemetry/otel.go:67` — Graceful shutdown timeout is configurable via context, not hardcoded.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-2** `internal/telemetry/otel.go:45` — `trace.SpanKindInternal` is now the zero value in OTel v1.19 and can be omitted. The explicit call is harmless but adds noise.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Style Review Report
+
+  ## Review Unit: internal/telemetry/otel.go
+
+  ### Strengths
+  - Exported functions have complete godoc comments with example usage.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **STY-1** [Formatting] `internal/telemetry/otel.go:88` — [style guide §Formatting] Inline comment exceeds the 80-column project limit by 12 characters. Run `gofmt` and wrap.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: go.mod / go.sum
+
+  ### Strengths
+  - No indirect dependency removals — update is purely additive.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  (none)
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Testing Review Report
+
+  ## Review Unit: internal/telemetry/otel.go
+
+  ### Strengths
+  - `internal/telemetry/otel_test.go:14` — Tests use `go.opentelemetry.io/otel/exporters/stdout/stdouttrace` for hermetic span capture.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **TST-1** [Coverage] `internal/telemetry/otel_test.go` — `ShutdownTracer` timeout path (context cancelled before flush) is not covered. Add a test that cancels the context immediately and verifies graceful degradation.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: go.mod / go.sum
+
+  ### Strengths
+  - No new test dependencies introduced.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  (none)
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)

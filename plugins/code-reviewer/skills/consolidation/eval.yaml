@@ -1,12 +1,11 @@
-name: code-reviewer-eval
-description: Evaluate consolidation of multi-phase code review findings into a unified report
-skill: code-reviewer:consolidation
+name: consolidation
+description: Evaluate the consolidation skill — merging phase reports into a single deduplicated report with structured IDs and a verdict
+skill: consolidation
 
 execution:
   mode: case
-  arguments: "{phase_reports_context}"
-  timeout: 900
-  max_budget_usd: 3.0
+  arguments: "{prompt}"
+  parallelism: 3
 
 runner:
   type: claude-code
@@ -26,28 +25,32 @@ dataset:
   path: plugins/code-reviewer/skills/consolidation/eval/cases
   schema: |
     Each case directory contains:
-    - input.yaml: YAML file with:
-      * phase_reports_context: the full text of all completed phase reports
-        (adversarial, style, testing) to be consolidated — passed as the prompt context
-      * review_unit_count: number of review units in the review
-      * phases_completed: list of phases that completed (e.g., ["adversarial", "style", "testing"])
-      * phases_failed: list of phases that failed (e.g., [])
-    - annotations.yaml: expected consolidated findings (counts by severity/prefix),
-      expected verdict (Yes/No/With fixes), expected deduplication count
+    - input.yaml: YAML file with a single 'prompt' field (string) containing the
+      assembled consolidation context: triage metadata (branch name, base branch,
+      file count, unit count), review unit definitions, and one or more simulated
+      phase reports (adversarial, style, testing) formatted per
+      templates/phase-report.md. Each phase report has ## Review Unit: <name>
+      sections with Strengths, Issues (Critical/Important/Minor with IDs like
+      BUG-N, SEC-N, STY-N, TST-N, IMP-N), Improvements, and Open Questions.
+    - annotations.yaml: Optional metadata — expected_verdict (Yes|No|With fixes),
+      expected_finding_count (total findings across phases before dedup),
+      phases_present (list of phases included), has_cross_unit (true/false).
 
 outputs:
   - path: output
     schema: |
-      Consolidated review report in conversation text (stdout-only, no files written to disk).
-      Use {{ conversation }} in judges to access the consolidated report.
-      Report structure:
-      - Review Summary section (phases completed, unit count)
-      - Findings by severity (Critical, Important, Minor) with structured IDs:
-        BUG-N, SEC-N, STY-N, TST-N, IMP-N
-      - Cross-Unit Findings section (if applicable)
-      - Strengths section (aggregated from all phases)
-      - Open Questions section (aggregated from all phases)
-      - "Ready to submit? Yes / No / With fixes" verdict with reasoning
+      Stdout/conversation only — no files written to disk.
+      The consolidated report is delivered as conversation text with these sections:
+      - ## Review Summary: branch/unit/phase overview, notes any missing phases
+      - ## Findings: organized by severity (### Critical, ### Important, ### Minor)
+        Each finding: **PREFIX-N** [Sub-category] `file:line` — description
+        Prefixes: BUG (adversarial bugs), SEC (security), STY (style), TST (testing),
+        IMP (improvements). IDs are sequential within prefix, ordered by severity.
+        Deduplicated findings carry a phase tag: **[adversarial, testing]**
+      - ## Cross-Unit Findings: issues spanning multiple units (omitted if none)
+      - ## Strengths: consolidated from all phases with file:line refs
+      - ## Open Questions: aggregated, deduplicated
+      - ## Verdict: **Ready to submit?** Yes / No / With fixes + 1-2 sentence reasoning
 
 traces:
   stdout: true
@@ -59,97 +62,128 @@ judges:
   - name: budget_check
     builtin: cost_budget
     arguments:
-      max_cost_usd: 2.5
+      max_cost_usd: 3.0
 
   - name: verdict_present
     description: |
-      Verifies the consolidated report contains a parseable verdict line.
+      Verify the consolidated report contains a Verdict section with a valid verdict
+      (Yes, No, or With fixes) and reasoning.
     check: |
       import re
       conversation = outputs.get("conversation", "")
       if not conversation:
           return (False, "No conversation output")
-      verdict_match = re.search(r'Ready to submit\?.*?(Yes|No|With fixes)', conversation, re.IGNORECASE)
+      verdict_match = re.search(r'\*\*Ready to submit\?\*\*\s*(Yes|No|With fixes)', conversation, re.IGNORECASE)
       if not verdict_match:
-          return (False, "No 'Ready to submit? Yes/No/With fixes' verdict found in report")
+          return (False, "No verdict found — missing '**Ready to submit?** Yes/No/With fixes'")
       verdict = verdict_match.group(1)
+      has_reasoning = bool(re.search(r'\*\*Reasoning:\*\*', conversation))
+      if not has_reasoning:
+          return (False, f"Verdict '{verdict}' found but no Reasoning line")
       return (True, f"Verdict: {verdict}")
 
-  - name: finding_id_format
+  - name: report_sections_present
     description: |
-      Validates all findings use structured IDs (BUG-N, SEC-N, STY-N, TST-N, IMP-N)
-      and IDs are sequential within each prefix.
+      Verify the consolidated report contains the required structural sections:
+      Review Summary, Findings, and Verdict. Strengths and Open Questions are
+      expected when inputs include them.
+    check: |
+      conversation = outputs.get("conversation", "")
+      if not conversation:
+          return (False, "No conversation output")
+      required = ["## Review Summary", "## Findings", "## Verdict"]
+      missing = [s for s in required if s not in conversation]
+      if missing:
+          return (False, f"Missing sections: {missing}")
+      return (True, f"All required sections present")
+
+  - name: finding_ids_present
+    description: |
+      Verify that findings in the consolidated report have valid structured IDs
+      (BUG-N, SEC-N, STY-N, TST-N, or IMP-N) and that IDs are sequential
+      within each prefix.
     check: |
       import re
       conversation = outputs.get("conversation", "")
-      valid_prefixes = ["BUG", "SEC", "STY", "TST", "IMP"]
-      all_ids = []
-      by_prefix = {}
-      for prefix in valid_prefixes:
-          nums = [int(m) for m in re.findall(rf'\*\*{prefix}-(\d+)\*\*', conversation)]
-          if nums:
-              by_prefix[prefix] = sorted(nums)
-              all_ids.extend(nums)
-      if not all_ids:
+      if not conversation:
+          return (False, "No conversation output")
+      ids = re.findall(r'\*\*([A-Z]+-\d+)\*\*', conversation)
+      # Filter to known prefixes (not section headers or bold text)
+      valid_prefixes = {"BUG", "SEC", "STY", "TST", "IMP"}
+      found = [fid for fid in ids if fid.split("-")[0] in valid_prefixes]
+      if not found:
           annotations = outputs.get("annotations", {})
-          if annotations.get("expected_total_findings", 0) == 0:
+          if annotations.get("expected_finding_count", -1) == 0:
               return (True, "No findings expected and none found")
-          return (False, "No structured findings found in consolidated report")
+          return (False, "No structured finding IDs (BUG-N, SEC-N, STY-N, TST-N, IMP-N) in report")
+      # Check sequential within each prefix
+      by_prefix = {}
+      for fid in found:
+          prefix, num = fid.rsplit("-", 1)
+          by_prefix.setdefault(prefix, []).append(int(num))
       for prefix, nums in by_prefix.items():
+          nums.sort()
           if nums != list(range(1, max(nums) + 1)):
               return (False, f"{prefix} IDs not sequential: {nums}")
-      return (True, f"Valid IDs: {sum(len(v) for v in by_prefix.values())} findings ({list(by_prefix.keys())})")
-
-  - name: verdict_matches_findings
-    description: |
-      Verifies the verdict is consistent with critical/important finding presence:
-      Critical findings → Not "Yes"; No critical findings → Not "No".
-    check: |
-      import re
-      conversation = outputs.get("conversation", "")
-      verdict_match = re.search(r'Ready to submit\?.*?(Yes|No|With fixes)', conversation, re.IGNORECASE)
-      if not verdict_match:
-          return (True, "No verdict to validate (see verdict_present judge)")
-      verdict = verdict_match.group(1).lower()
-      has_critical = bool(re.search(r'##\s+Critical|###\s+Critical', conversation))
-      bug_sec_count = len(re.findall(r'\*\*(BUG|SEC)-\d+\*\*', conversation))
-      if verdict == "yes" and has_critical:
-          return (False, "Verdict is 'Yes' but Critical section exists in report")
-      if verdict == "no" and not has_critical and bug_sec_count == 0:
-          return (False, "Verdict is 'No' but no Critical findings or BUG/SEC findings found")
-      return (True, f"Verdict '{verdict}' is consistent with findings (critical_section={has_critical})")
+      summary = {p: len(ns) for p, ns in by_prefix.items()}
+      return (True, f"Valid sequential IDs: {summary}")
 
   - name: consolidation_quality
     description: |
-      LLM evaluates whether the consolidation correctly deduplicates findings,
-      assigns proper final IDs, and produces a coherent summary with accurate verdict.
+      LLM judge: assess whether the consolidation correctly deduplicated findings,
+      applied appropriate severity levels, identified cross-unit issues, and produced
+      an accurate verdict consistent with the findings.
     prompt: |
-      Evaluate the quality of this consolidated code review report.
+      You are evaluating a code review consolidation skill. The skill received phase
+      reports from multiple reviewers and produced a consolidated report.
+
+      Here is the consolidated output:
 
       {{ conversation }}
 
-      Assess:
-      1. Are all finding IDs sequential within each prefix (BUG-1, BUG-2, ... SEC-1, SEC-2, ...)?
-      2. Does the Review Summary accurately describe which phases completed/failed?
-      3. Is the verdict (Yes/No/With fixes) well-reasoned and consistent with the findings?
-      4. Are strengths and open questions clearly separated from findings?
-      5. If cross-unit findings exist, are they genuinely spanning multiple units?
+      Evaluate on a 1–5 scale:
 
-      Score 1-5:
-      1: Poorly organized, verdict inconsistent, missing required sections
-      2: Has the right sections but IDs disorganized or verdict poorly justified
-      3: Adequate consolidation but missing deduplication or weak verdict reasoning
-      4: Good organization, consistent verdict, clear sections; minor gaps
-      5: Excellent consolidation: sequential IDs, justified verdict, all sections present
+      **Score 5**: Excellent consolidation.
+        - All findings from input phases appear (none lost)
+        - Deduplication correct: same file:line or conceptual issue merged once, tagged with all phases
+        - IDs sequential within each prefix, ordered Critical → Important → Minor
+        - Cross-Unit section correctly identifies multi-unit issues (or is correctly omitted)
+        - Severity levels match SKILL.md definitions (Critical=bugs/security/data-loss only)
+        - Verdict accurately reflects the finding profile
+        - Strengths and Open Questions aggregated and deduplicated
+        - Report is scannable and well-structured
+
+      **Score 4**: Good consolidation with minor issues.
+        - All findings present, minor dedup imprecision or one mislabeled severity
+        - Cross-unit section reasonable
+        - Verdict correct
+
+      **Score 3**: Adequate consolidation with noticeable issues.
+        - Some findings slightly reworded or merged imprecisely
+        - Severity labels mostly correct but one or two are questionable
+        - Verdict is directionally correct but reasoning is weak
+
+      **Score 2**: Significant consolidation problems.
+        - Findings lost or duplicated without merging
+        - Severity inflation/deflation on multiple findings
+        - Verdict inconsistent with findings or missing reasoning
+        - Missing required sections
+
+      **Score 1**: Failed consolidation.
+        - Major findings missing, or the skill added new findings not in input
+        - Verdict wrong (e.g., "Yes" with unresolved Critical findings)
+        - Structured IDs missing or nonsensical
+
+      Reply with: Score: <1-5>\nRationale: <one sentence>
 
 thresholds:
   budget_check:
     min_pass_rate: 1.0
   verdict_present:
     min_pass_rate: 1.0
-  finding_id_format:
-    min_pass_rate: 0.95
-  verdict_matches_findings:
-    min_pass_rate: 0.9
+  report_sections_present:
+    min_pass_rate: 1.0
+  finding_ids_present:
+    min_pass_rate: 0.8
   consolidation_quality:
     min_mean: 3.5

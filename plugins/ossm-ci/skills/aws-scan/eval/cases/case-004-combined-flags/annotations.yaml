@@ -1,0 +1,5 @@
+expect_regions_flag: true
+expect_resources_flag: true
+regions_value: "us-east-1,us-west-2"
+resources_value: "ec2,rds"
+description: "Both --regions and --resources flags must appear with correct values"

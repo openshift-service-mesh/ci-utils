@@ -188,6 +188,54 @@ When in doubt, ask: *could this skill delete something important or expose crede
 
 ---
 
+## Eval Requirements for New Skills
+
+Every skill added to this repository **must ship with eval infrastructure** before it can be merged. Eval infrastructure gives the team (and AI contributors) a way to measure whether the skill works correctly and to catch regressions when the skill is modified.
+
+### What to create
+
+For each new skill at `plugins/<plugin>/skills/<name>/`, create:
+
+```
+plugins/<plugin>/skills/<name>/
+  eval.yaml      # Execution config, judges, and thresholds
+  eval.md        # Skill analysis: what it does, inputs, output format, judge rationale
+  eval/
+    cases/
+      case-001-<scenario>/
+        input.yaml        # Test input
+        annotations.yaml  # Expected output characteristics for judges
+      case-002-…/         # At least 5 cases total
+```
+
+### How to generate it
+
+Use the agent-eval-harness skills — they read the skill's `SKILL.md` and generate the scaffolding:
+
+```
+/eval-analyze   # Reads SKILL.md, generates eval.yaml and eval.md
+/eval-dataset   # Generates realistic test cases from the eval config
+/eval-run       # Runs the skill against all cases and scores with judges
+/eval-optimize  # Identifies failures, edits SKILL.md, re-runs until all judges pass
+```
+
+Typical workflow for a new skill:
+
+```
+/eval-analyze --skill <plugin>:<name>
+/eval-dataset --count 5
+/eval-run --model opus
+/eval-optimize     # iterate until all judges pass
+```
+
+### Definition of done
+
+A skill is ready to merge when `/eval-run` reports all deterministic judges passing at their configured thresholds and the LLM judge mean score meets its minimum. Include the eval infrastructure in the same PR as the skill.
+
+> **For AI contributors**: whenever you add or significantly modify a `SKILL.md`, run the eval workflow above before opening a PR. Do not skip this step — a skill without passing evals is not mergeable.
+
+---
+
 ## Repository Structure
 
 ### `report_portal/`

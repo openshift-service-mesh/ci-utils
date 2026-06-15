@@ -1,0 +1,4 @@
+expect_regions_flag: true
+expect_resources_flag: false
+regions_value: "us-east-1,eu-west-1"
+description: "--regions flag expected with correct value"

@@ -1,0 +1,2 @@
+description: "Default full-account scan with no filters — user runs aws-scan with no arguments"
+# No regions or resources fields: skill should produce unfiltered commands

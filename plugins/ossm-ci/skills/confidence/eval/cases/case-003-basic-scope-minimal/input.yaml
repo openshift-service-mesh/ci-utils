@@ -1,0 +1,8 @@
+build_id: "ossm-3.1.4-konflux-base-update-12"
+ossm_version: "3.1.4"
+istio_version: "1.26.5"
+sail_version: "1.26.5"
+change_type: "base_image_update"
+known_issues: []
+target_confidence_threshold: 5
+description: "Auto base image update via Konflux — BASIC scope — essential tests only"

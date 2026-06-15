@@ -1,0 +1,119 @@
+prompt: |
+  # Consolidation Request
+
+  ## Triage Metadata
+  - Branch: fix/config-reload-panic
+  - Base branch: main
+  - Files changed: 4
+  - Review units: 2
+
+  ## Review Unit Definitions
+  1. **config/watcher.go** — File-system watcher that hot-reloads configuration on change
+  2. **config/watcher_test.go** — Unit tests for the config watcher
+
+  ## Phase Status
+  - Adversarial review: COMPLETED
+  - Style review: COMPLETED
+  - Testing review: DID NOT COMPLETE (agent timed out)
+
+  ---
+
+  # Adversarial Review Report
+
+  ## Review Unit: config/watcher.go
+
+  ### Strengths
+  - `config/watcher.go:34` — Uses `fsnotify.Watcher` correctly: registers the directory, not just the file, to catch atomic writes (rename-based editors).
+  - `config/watcher.go:78` — Reload logic is wrapped in a deferred `recover()` to catch panics from malformed config.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  - **BUG-1** [Goroutine leak] `config/watcher.go:55` — The event loop goroutine (`go w.watch()`) is started in `NewWatcher` but there is no mechanism to stop it if `Close()` is called while a reload is in progress. The goroutine blocks on `w.events <- event` indefinitely if the consumer channel is full. Fix: make the send select-with-context: `select { case w.events <- event: case <-w.ctx.Done(): return }`.
+
+  #### Minor
+  - **IMP-1** `config/watcher.go:102` — `debounce` duration is hardcoded to 200ms. Consider making it configurable via `WatcherOptions` for environments with slow filesystems.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  - Should the watcher emit the parsed config struct or the raw file bytes on reload? The current API emits raw bytes, which forces consumers to re-parse.
+
+  ---
+
+  ## Review Unit: config/watcher_test.go
+
+  ### Strengths
+  - `config/watcher_test.go:22` — Uses `t.TempDir()` for file isolation.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-2** `config/watcher_test.go:67` — `TestReload` uses `time.Sleep(300ms)` to wait for the debounce; this is flaky on slow CI machines. Use a channel or `testutil.Eventually` with a timeout instead.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Style Review Report
+
+  ## Review Unit: config/watcher.go
+
+  ### Strengths
+  - All exported types documented. `WatcherOptions` fields have inline comments.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **STY-1** [Naming] `config/watcher.go:19` — [style guide §Go Naming] Field `evCh` should be `eventCh` — abbreviated channel names are not in the project glossary.
+  - **STY-2** [Error handling] `config/watcher.go:88` — [style guide §Errors] Silently swallowing the parse error with `_ = err` hides reload failures. At minimum, log the error.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: config/watcher_test.go
+
+  ### Strengths
+  - Table-driven tests with descriptive names.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  (none)
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)

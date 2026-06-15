@@ -1,0 +1,4 @@
+expected_count_param: 50
+expected_days_param: null
+expect_tsv_file: true
+description: "Script should use COUNT=50, DAYS=None"

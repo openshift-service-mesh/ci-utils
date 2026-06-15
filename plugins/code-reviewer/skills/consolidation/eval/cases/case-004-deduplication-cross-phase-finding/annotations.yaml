@@ -1,0 +1,9 @@
+expected_verdict: "With fixes"
+expected_finding_count: 5
+phases_present: [adversarial, testing]
+has_cross_unit: false
+# BUG-1 (adversarial) and TST-1 (testing) both reference ratelimit/limiter.go:91 — the same missing error check.
+# The consolidated report should merge these into one finding tagged [adversarial, testing].
+dedup_expected: true
+dedup_files:
+  - "ratelimit/limiter.go:91"

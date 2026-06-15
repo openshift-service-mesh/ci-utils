@@ -1,0 +1,6 @@
+expected_verdict: "With fixes"
+expected_finding_count: 5
+phases_present: [adversarial, style]
+missing_phases: [testing]
+has_cross_unit: false
+# The verdict should note that testing review did not run

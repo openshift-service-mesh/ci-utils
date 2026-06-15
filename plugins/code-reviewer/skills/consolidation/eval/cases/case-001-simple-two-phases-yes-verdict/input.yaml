@@ -1,0 +1,113 @@
+prompt: |
+  # Consolidation Request
+
+  ## Triage Metadata
+  - Branch: feature/add-cache-metrics
+  - Base branch: main
+  - Files changed: 6
+  - Review units: 2
+
+  ## Review Unit Definitions
+  1. **cache/metrics.go** — New Prometheus metrics registration for cache hit/miss rates
+  2. **cache/metrics_test.go** — Unit tests for the new metrics
+
+  ---
+
+  # Adversarial Review Report
+
+  ## Review Unit: cache/metrics.go
+
+  ### Strengths
+  - `cache/metrics.go:14` — Metric names follow the `cache_<noun>_<verb>_total` Prometheus convention correctly.
+  - `cache/metrics.go:28` — Label cardinality is bounded (only `cache_name` label), avoiding metric explosion.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-1** [Observability] `cache/metrics.go:42` — The `ObserveHitLatency` method records duration in seconds but the histogram buckets (`0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0`) are sized for millisecond-range operations. Consider documenting the unit in the metric description or adjusting buckets.
+
+  ### Improvements
+  - **IMP-2** `cache/metrics.go:18` — Add a `help` string that distinguishes this counter from the generic `requests_total` in the parent package.
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: cache/metrics_test.go
+
+  ### Strengths
+  - `cache/metrics_test.go:55` — Test helper `newTestRegistry()` properly isolates Prometheus state between tests.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **IMP-3** [Test quality] `cache/metrics_test.go:88` — Test `TestObserveHitLatency` only checks that the observation doesn't panic; it doesn't assert the recorded value. Consider using `prometheus/testutil` to assert the histogram sum.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  # Style Review Report
+
+  ## Review Unit: cache/metrics.go
+
+  ### Strengths
+  - Exported symbols have godoc comments on all 4 exported functions.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  - **STY-1** [Naming] `cache/metrics.go:11` — [style guide §Go Naming] Variable `mtrcs` is an abbreviation not defined in the project glossary. Rename to `metrics` for clarity.
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)
+
+  ---
+
+  ## Review Unit: cache/metrics_test.go
+
+  ### Strengths
+  - All test functions follow `TestXxx` naming and use `t.Helper()` in helpers.
+
+  ### Issues
+
+  #### Critical
+  (none)
+
+  #### Important
+  (none)
+
+  #### Minor
+  (none)
+
+  ### Improvements
+  (none)
+
+  ### Open Questions
+  (none)

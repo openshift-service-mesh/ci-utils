@@ -1,0 +1,8 @@
+build_id: "ossm-3.2.0-build-147"
+ossm_version: "3.2.0"
+istio_version: "1.27.1"
+sail_version: "1.27.1"
+change_type: "new_minor"
+known_issues: []
+target_confidence_threshold: 8
+description: "New minor OSSM 3.2.0 release — FULL scope required — healthy test results expected"

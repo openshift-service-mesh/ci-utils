@@ -1,0 +1,3 @@
+mode: "count"
+count: 100
+description: "Default collection: last 100 completed jobs + all pending"

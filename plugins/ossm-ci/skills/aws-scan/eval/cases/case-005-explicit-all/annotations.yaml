@@ -1,0 +1,3 @@
+expect_regions_flag: false
+expect_resources_flag: false
+description: "No flags expected — user asked for everything, omitting flags is correct"

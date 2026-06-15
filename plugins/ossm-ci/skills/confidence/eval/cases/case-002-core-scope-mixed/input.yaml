@@ -1,0 +1,9 @@
+build_id: "ossm-3.1.5-build-89"
+ossm_version: "3.1.5"
+istio_version: "1.26.6"
+sail_version: "1.26.6"
+change_type: "patch_update"
+known_issues:
+  - "KI tests intermittently failing on ROSA due to cluster resource constraints"
+target_confidence_threshold: 6
+description: "Istio patch update 1.26.5 -> 1.26.6 — CORE scope — mixed results with known flaky KI tests"

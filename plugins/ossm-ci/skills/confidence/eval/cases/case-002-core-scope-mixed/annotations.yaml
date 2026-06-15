@@ -1,0 +1,5 @@
+expected_scope: "CORE"
+expected_decision: "NEEDS ATTENTION"
+min_score: 4.0
+max_score: 7.5
+description: "Patch update requires CORE scope; known KI flakiness should pull score mid-range and flag NEEDS ATTENTION"

@@ -1,0 +1,4 @@
+expected_verdict: "Yes"
+expected_finding_count: 4
+phases_present: [adversarial, style]
+has_cross_unit: false

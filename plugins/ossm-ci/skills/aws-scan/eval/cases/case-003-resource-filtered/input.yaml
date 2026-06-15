@@ -1,0 +1,2 @@
+description: "Scan limited to EC2 and S3 resource types across all regions"
+resources: "ec2,s3"
