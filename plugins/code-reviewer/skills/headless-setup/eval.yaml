@@ -16,7 +16,13 @@ models:
   judge: claude-opus-4-6
 
 permissions:
-  allow: []
+  allow:
+    - Read
+    - Write
+    - Edit
+    - Bash
+    - Glob
+    - Grep
   deny: []
 
 mlflow:
@@ -37,7 +43,7 @@ dataset:
       expected base_branch value, whether AGENTS.md should be created
 
 outputs:
-  - path: output
+  - path: .claude/code-reviewer
     schema: |
       Reference docs written in-place to .claude/code-reviewer/reference/ directory.
       Use outputs["modified_files"] and outputs["files"] to access generated files.

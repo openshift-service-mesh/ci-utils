@@ -19,6 +19,12 @@ models:
 permissions:
   allow:
     - Skill
+    - Read
+    - Write
+    - Edit
+    - Bash
+    - Glob
+    - Grep
   deny: []
 
 mlflow:
@@ -174,9 +180,9 @@ judges:
       4: Good maintenance: correct detection, clear questions, accurate updates
       5: Excellent: precise detection, specific questions, accurate updates, preserved unchanged
 
-  arguments:
-    change_type: "{{ arguments.change_type }}"
-    sections_expected_to_change: "{{ arguments.sections_expected_to_change }}"
+    arguments:
+      change_type: "{{ arguments.change_type }}"
+      sections_expected_to_change: "{{ arguments.sections_expected_to_change }}"
 
 thresholds:
   budget_check:

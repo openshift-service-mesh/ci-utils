@@ -127,6 +127,16 @@ When `previous_findings` is present, limit your scope:
 (repeat for each, or "None." if none)
 
 ## Verdict: <PASS | PASS_WITH_ANNOTATIONS | REWORK_NEEDED>
+
+## Recommendation
+
+Write exactly one of the following lines, based on the verdict and severity of findings:
+
+- **No action needed — the documentation is up to date.** (if PASS or PASS_WITH_ANNOTATIONS)
+- **Run /codebase-scribe:scribe-maintain to update: <comma-separated section names>.** (if REWORK_NEEDED with targeted stale sections that can be patched in place)
+- **Run /codebase-scribe:scribe-draft for a full redraft.** (if REWORK_NEEDED and content is so outdated or fabricated that targeted updates would miss too much)
+
+Choose scribe-maintain when the structure is sound and only specific sections need correction. Choose scribe-draft when the documentation is comprehensively wrong, covers a different codebase state, or contradicts source at so many points that section-by-section repair would leave gaps.
 ```
 
 **Verdict rules:**

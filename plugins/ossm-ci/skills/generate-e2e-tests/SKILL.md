@@ -248,6 +248,32 @@ Use hidden tags to specify operational requirements:
 
 ## Test Generation Patterns
 
+### Suite Bootstrap File
+
+Every test package must include a `suite_test.go` with **both** the Ginkgo runner AND a `var _ = Describe` declaration so it is recognized as a Ginkgo spec file:
+
+```go
+// suite_test.go — required structure
+package documentation_test
+
+import (
+    "testing"
+
+    . "github.com/onsi/ginkgo/v2"
+    . "github.com/onsi/gomega"
+)
+
+// var _ = Describe is required — marks this as a Ginkgo spec file
+var _ = Describe("Suite", func() {})
+
+func TestDocumentation(t *testing.T) {
+    RegisterFailHandler(Fail)
+    RunSpecs(t, "OSSM E2E Documentation Suite")
+}
+```
+
+Do NOT generate a `suite_test.go` that contains only `TestXxx()` without `var _ = Describe` — it will not be recognized as part of the BDD spec suite.
+
 ### BDD Ginkgo Structure with Operational Focus
 
 ```go
@@ -341,25 +367,26 @@ tests/
 
 ### Configuration Management
 
+The generated `test-config.yaml` must have these four sections at the **root level** (no top-level wrapper key):
+
 ```yaml
-# Generated test-config.yaml
-test_config:
-  timeouts:
-    installation: 600s
-    pod_ready: 120s
-    service_ready: 60s
-  retries:
-    max_attempts: 3
-    backoff_strategy: exponential
-    initial_delay: 5s
-  validation:
-    health_checks: true
-    resource_cleanup: true
-    parallel_safe: false
-  environment:
-    cluster_type: "kubernetes"
-    auth_method: "kubeconfig"
-    required_permissions: ["get", "list", "create", "delete"]
+# Generated test-config.yaml — required sections at root level
+timeouts:
+  installation: 600s
+  pod_ready: 120s
+  service_ready: 60s
+retries:
+  max_attempts: 3
+  backoff_strategy: exponential
+  initial_delay: 5s
+validation:
+  health_checks: true
+  resource_cleanup: true
+  parallel_safe: false
+environment:
+  cluster_type: "kubernetes"
+  auth_method: "kubeconfig"
+  required_permissions: ["get", "list", "create", "delete"]
 ```
 
 ## Validation and Quality Assurance

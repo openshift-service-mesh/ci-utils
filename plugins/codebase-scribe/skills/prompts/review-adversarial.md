@@ -98,6 +98,15 @@ Structure your report EXACTLY as follows. The orchestrator parses the `## Verdic
    - Confidence: <0.0-1.0>
 
 ## Verdict: PASS | PASS_WITH_ANNOTATIONS | REWORK_NEEDED
+
+## Recommendation
+
+Write exactly one line, based on the verdict:
+- **No action needed — the documentation is up to date.** (if PASS or PASS_WITH_ANNOTATIONS)
+- **Run /codebase-scribe:scribe-maintain to update: <comma-separated section names>.** (if REWORK_NEEDED with targeted stale sections)
+- **Run /codebase-scribe:scribe-draft for a full redraft.** (if REWORK_NEEDED and content is comprehensively wrong)
+
+Choose scribe-maintain when the structure is sound and specific sections need correction. Choose scribe-draft when the documentation is so outdated or fabricated that targeted updates would leave major gaps.
 ```
 
 **Verdict rules:**

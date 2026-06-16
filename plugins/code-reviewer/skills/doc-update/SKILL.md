@@ -47,7 +47,23 @@ Or for new conventions:
 
 When updating a reference doc:
 
-1. Read the current doc from `.claude/code-reviewer/reference/`
+1. Check if the doc exists at `.claude/code-reviewer/reference/`. Use the right doc for the convention type:
+   - Code style and naming → `style-guide.md`
+   - Testing patterns → `testing-practices.md`
+   - API design and endpoint conventions → `api-conventions.md`
+
+   If the file doesn't exist, create it with this structure — don't search elsewhere for it:
+   ```markdown
+   # [Doc Title]
+
+   ## Conventions
+
+   ## Changelog
+
+   | Date | Change | Trigger |
+   |------|--------|---------|
+   ```
+
 2. Make the specific change (add, modify, or remove the convention)
 3. Add a changelog entry:
 
@@ -62,4 +78,4 @@ When updating a reference doc:
 - **Never update silently.** Every change requires explicit engineer confirmation.
 - **Never rewrite docs wholesale.** Make targeted changes only.
 - **Preserve the changelog.** Always append, never clear.
-- **One question per convention.** Don't batch multiple potential updates into a single question.
+- **One question per convention.** Each distinct rule gets its own question — even if two rules relate to the same topic (e.g., two separate rules about error naming), ask about them separately so the engineer can approve one and decline the other. Only bundle sub-rules that are so tightly coupled they'd always be adopted together as a single unit.

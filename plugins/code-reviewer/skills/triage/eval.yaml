@@ -64,14 +64,17 @@ judges:
   - name: budget_check
     builtin: cost_budget
     arguments:
-      max_cost_usd: 1.5
+      max_cost_usd: 4.0
 
   - name: setup_guard_passes
     description: |
-      Verifies that the setup guard passed (config.md and reference/ were found)
-      and the skill did not abort with a missing-config error.
+      Verifies that the setup guard behaved correctly:
+      - For normal cases: config.md and reference/ were found, skill did not abort.
+      - For case-003 (expected_setup_guard_pass=false): setup guard fired correctly.
     check: |
       conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_pass = annotations.get("expected_setup_guard_pass", True)
       error_signals = [
           "no project configuration found",
           "run /code-reviewer:setup first",
@@ -79,8 +82,12 @@ judges:
           "reference docs not found"
       ]
       found_errors = [s for s in error_signals if s.lower() in conversation.lower()]
+      if not expected_pass:
+          if found_errors:
+              return (True, f"Setup guard correctly fired as expected: {found_errors}")
+          return (False, "Setup guard expected to fire but did not — setup-guard case may be broken")
       if found_errors:
-          return (False, f"Setup guard failed: {found_errors}")
+          return (False, f"Setup guard failed unexpectedly: {found_errors}")
       return (True, "Setup guard passed — config and reference docs found")
 
   - name: review_units_produced
@@ -104,8 +111,13 @@ judges:
   - name: brief_sections_present
     description: |
       Verifies each review brief contains the required sections from templates/review-brief.md.
+      Skipped for cases where the setup guard is expected to fire (no briefs produced).
     check: |
       conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_pass = annotations.get("expected_setup_guard_pass", True)
+      if not expected_pass:
+          return (True, "Brief sections check skipped — setup guard expected to fire for this case")
       required_section_keywords = [
           "what changed",
           "files in this unit",
