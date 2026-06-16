@@ -170,9 +170,9 @@ judges:
       4: Good accuracy with minor gaps in framework/dependency detection
       5: Accurate and complete — architecture, components, build, tests all correct
 
-  arguments:
-    workspace_description: "{{ arguments.workspace_description }}"
-    expected_frameworks: "{{ arguments.expected_frameworks }}"
+    arguments:
+      workspace_description: "{{ arguments.workspace_description }}"
+      expected_frameworks: "{{ arguments.expected_frameworks }}"
 
 thresholds:
   budget_check:

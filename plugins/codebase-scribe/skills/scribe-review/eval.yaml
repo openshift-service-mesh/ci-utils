@@ -151,9 +151,9 @@ judges:
       4: Good review: correct sections identified with file evidence, appropriate recommendation
       5: Excellent: precise stale/current discrimination, evidence-backed, severity-matched recommendation
 
-  arguments:
-    staleness_type: "{{ arguments.staleness_type }}"
-    expected_stale_sections: "{{ arguments.expected_stale_sections }}"
+    arguments:
+      staleness_type: "{{ arguments.staleness_type }}"
+      expected_stale_sections: "{{ arguments.expected_stale_sections }}"
 
 thresholds:
   budget_check:
