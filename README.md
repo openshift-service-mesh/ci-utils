@@ -210,7 +210,7 @@ plugins/<plugin>/skills/<name>/
 
 ### How to generate it
 
-Use the agent-eval-harness skills — they read the skill's `SKILL.md` and generate the scaffolding:
+Use the agent-eval-harness(https://github.com/opendatahub-io/agent-eval-harness) skills — they read the skill's `SKILL.md` and generate the scaffolding:
 
 ```
 /eval-analyze   # Reads SKILL.md, generates eval.yaml and eval.md
