@@ -3,7 +3,7 @@ description: Evaluate E2E test generation from documentation using BDD Ginkgo
 skill: ossm-ci:generate-e2e-tests
 
 execution:
-  mode: batch
+  mode: case
   arguments: "--headless"
   timeout: 3600
   max_budget_usd: 10.0
