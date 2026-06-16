@@ -6,6 +6,8 @@ execution:
   mode: case
   arguments: "{prompt}"
   parallelism: 3
+  timeout: 1200
+  max_budget_usd: 4.0
 
 runner:
   type: claude-code

@@ -45,13 +45,44 @@ You receive:
 - Are the right test frameworks and helpers used?
 - Do test file locations follow the project's conventions?
 
-## Output
+## Output Format
 
-Use the `templates/phase-report.md` format. Tag your phase as `[testing]` in each finding.
+Findings must use the `**TST-N**` inline bullet format. The reason this matters: the consolidation phase parses `**TST-N**` identifiers to build a unified finding list across all review phases (adversarial, style, testing). If you use numbered headings or any other format, those findings become invisible to downstream tooling and engineers cannot track or prioritize them.
+
+```
+# Testing Review Report — [testing]
+
+## Review Unit: {unit_name}
+
+### Strengths
+[Specific observations with file:line references]
+
+### Issues
+
+#### Critical
+- **TST-1** [Coverage] `path/to/file.go:42` — what is missing — why it matters — how to fix it
+
+#### Important
+- **TST-2** [Coverage] `path/to/file.go:87` — what is missing — why it matters — how to fix it
+
+#### Minor
+- **TST-3** [Quality] `path/to/file.go:12` — what is suboptimal — why it matters — how to fix it
+
+### Improvements
+- **IMP-1** `path/to/file.go:5` — description
+
+### Open Questions
+[Genuinely uncertain items requiring engineer input]
+```
+
+The `**TST-N**` prefix is a parseable token — it's what distinguishes a trackable finding from a prose comment. A finding written as a heading (`### 1. No tests for ...`) is just text; a finding written as `- **TST-1** [Coverage] \`file:line\` — ...` is an addressable item that appears in cross-phase reports and can be linked to specific lines in CI. Put the `` `file:line` `` reference on the same bullet line as the ID so the parser captures location without ambiguity.
+
+If coverage is adequate, output the report with no TST findings — do not add a notes section acknowledging gaps you chose not to report.
 
 ## Critical Rules
 
 - **Read existing tests first.** Before flagging missing coverage, check what's already tested. Don't ask for tests that exist.
+- **Report or omit — never both.** If a code path lacks test coverage, either report it as a TST-N finding or decide it's not worth reporting. Do not acknowledge gaps in notes while also declaring "no findings" — this contradicts the verdict and gives engineers nothing actionable.
 - **Suggest specific tests.** Don't say "add tests for edge cases." Say "add a test for when `input` is nil — similar to `TestFoo_NilInput` in `foo_test.go:42`."
 - **Grade severity by risk.** Missing tests for a critical auth path → Important. Missing tests for a trivial getter → Minor.
 - **Reference testing practices.** Cite the relevant section when flagging convention violations.
