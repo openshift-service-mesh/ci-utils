@@ -1,4 +1,5 @@
 ---
+name: setup
 description: Onboard a project for code review — analyzes codebase and generates reference docs
 argument-hint:
 ---
@@ -9,12 +10,17 @@ You are onboarding a project for code review. This is a hybrid process: automate
 
 ## Step 0: Check for Existing Setup
 
-Check if `.claude/code-reviewer/reference/` already exists with reference docs.
+Check if `.code-reviewer/reference/` already exists with reference docs. If not, also check the legacy path `.claude/code-reviewer/reference/`.
 
-If it does, ask:
+If found (in either location), ask:
 > "Found existing reference docs. Would you like to:"
 > 1. **Refresh** — analyze the current codebase and merge updates into existing docs (preserves changelog)
 > 2. **Start fresh** — delete existing docs and regenerate from scratch
+
+If found at the legacy path only, also offer to migrate:
+> 3. **Migrate** — move `.claude/code-reviewer/` to `.code-reviewer/` and refresh
+
+New setups always write to `.code-reviewer/`.
 
 Wait for the user's response before proceeding.
 
@@ -116,9 +122,9 @@ If the engineer says to skip a doc entirely, don't create it.
 
 ## Step 4: Write & Store
 
-1. Create `.claude/code-reviewer/reference/` directory (if it doesn't exist)
+1. Create `.code-reviewer/reference/` directory (if it doesn't exist)
 2. Write each confirmed reference doc
-3. Create or update `.claude/code-reviewer/config.md` config:
+3. Create or update `.code-reviewer/config.md` config:
    - Auto-detect `base_branch` from git
    - Set `languages` based on what was discovered
    - Set `key_paths` based on discovered project structure
@@ -126,12 +132,12 @@ If the engineer says to skip a doc entirely, don't create it.
 4. Ask the user whether to commit or gitignore the generated files:
    > "Would you like to commit these files to the repo? Committing means `/code-reviewer:setup` only needs to be run once and all team members share the same conventions. Alternatively, I can add them to `.gitignore` so each developer maintains their own local copy."
 
-   - **If committing:** check `.gitignore` for any existing entries that would block the files (e.g. `.claude/` or `.claude/code-reviewer/`) and offer to remove them.
-   - **If gitignoring:** add `.claude/code-reviewer/` to `.gitignore` if not already present.
+   - **If committing:** check `.gitignore` for any existing entries that would block the files and offer to remove them.
+   - **If gitignoring:** add `.code-reviewer/` to `.gitignore` if not already present.
 5. Confirm to the user:
    > "Setup complete. Generated reference docs:"
-   > - `.claude/code-reviewer/reference/style-guide.md`
-   > - `.claude/code-reviewer/reference/testing-practices.md`
+   > - `.code-reviewer/reference/style-guide.md`
+   > - `.code-reviewer/reference/testing-practices.md`
    > - [etc.]
    >
    > "You can now run `/code-reviewer:review` to review your changes. To re-generate or update these docs later, run `/code-reviewer:setup` again."

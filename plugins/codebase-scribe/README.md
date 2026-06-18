@@ -1,6 +1,6 @@
 # codebase-scribe
 
-A Claude Code plugin that generates, enriches, and maintains agentic development documentation for any codebase.
+A plugin that generates, enriches, and maintains agentic development documentation for any codebase. Works natively with both **Claude Code** and **Cursor**.
 
 ## What It Does
 
@@ -28,15 +28,25 @@ After each Draft or Maintain run, a **Review gate** automatically verifies docum
 
 This plugin is distributed as part of the [ci-utils](https://github.com/openshift-service-mesh/ci-utils) marketplace.
 
+### Claude Code
+
 ```
 /plugin marketplace add openshift-service-mesh/ci-utils
 /plugin install codebase-scribe@ci-utils
 /reload-plugins
 ```
 
+### Cursor (local)
+
+```bash
+ln -s /path/to/ci-utils/plugins/codebase-scribe ~/.cursor/plugins/codebase-scribe
+```
+
+Then restart Cursor or run **Developer: Reload Window**.
+
 ### Verify installation
 
-Run `/plugin` in Claude Code to check the plugin is loaded. You should see `codebase-scribe` listed with no errors.
+Run `/plugin` in Claude Code or check the plugins panel in Cursor to confirm the plugin is loaded.
 
 ## Quick Start
 

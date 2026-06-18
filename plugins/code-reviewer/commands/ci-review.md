@@ -1,4 +1,5 @@
 ---
+name: ci-review
 description: Run fully autonomous code review in CI — no user interaction required. Performs ephemeral setup if needed, runs all review phases, and posts results to the PR.
 argument-hint:
 ---
@@ -17,12 +18,15 @@ Determine the PR context from the environment:
 ## Step 0: Setup — Ensure Reference Docs Exist
 
 Check if the project has reference docs:
-1. Check if `.claude/code-reviewer/config.md` exists
-2. Check if `.claude/code-reviewer/reference/` directory exists with at least one `.md` file
+1. Check if `.code-reviewer/config.md` exists
+2. If not, fall back to `.claude/code-reviewer/config.md` (legacy path)
+3. Check if the corresponding `reference/` directory exists with at least one `.md` file
 
-**If both exist:** Use them as-is. Proceed to Step 1.
+Use whichever path has the config. If both exist, prefer `.code-reviewer/`.
 
-**If either is missing:** Invoke the headless-setup skill to auto-discover project conventions and generate reference docs. The headless-setup skill runs non-interactively — it analyzes the codebase and auto-accepts all discovered conventions. Proceed to Step 1 after setup completes.
+**If found:** Use them as-is. Proceed to Step 1.
+
+**If neither location has these files:** Invoke the headless-setup skill to auto-discover project conventions and generate reference docs. The headless-setup skill runs non-interactively — it analyzes the codebase and auto-accepts all discovered conventions. Proceed to Step 1 after setup completes.
 
 ## Step 1: Triage
 

@@ -1,0 +1,29 @@
+{
+  "name": "ci-utils",
+  "owner": {
+    "name": "openshift-service-mesh"
+  },
+  "metadata": {
+    "description": "OSSM CI utilities: code review, documentation generation, and CI tooling"
+  },
+  "plugins": [
+    {
+      "name": "ossm-ci",
+      "source": "./plugins/ossm-ci",
+      "description": "OSSM CI utilities: release confidence scoring, E2E test generation, AWS resource inventory, and Prow CI metrics",
+      "version": "0.1.0"
+    },
+    {
+      "name": "code-reviewer",
+      "source": "./plugins/code-reviewer",
+      "description": "Multi-phase code review with auto-maintained project conventions",
+      "version": "0.3.0"
+    },
+    {
+      "name": "codebase-scribe",
+      "source": "./plugins/codebase-scribe",
+      "description": "Generate, enrich, and maintain agentic development documentation for any codebase",
+      "version": "1.2.6"
+    }
+  ]
+}

@@ -18,7 +18,7 @@ Check the code change against the project's documented style conventions. This i
 
 You receive:
 - A **unit-scoped review brief** for the specific review unit you're checking
-- The project's **style guide** reference doc from `.claude/code-reviewer/reference/style-guide.md`
+- The project's **style guide** reference doc from `.code-reviewer/reference/style-guide.md`
 
 ## Review Focus
 

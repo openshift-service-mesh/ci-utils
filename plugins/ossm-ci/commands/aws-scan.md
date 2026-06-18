@@ -1,4 +1,5 @@
 ---
+name: aws-scan
 description: Guide the user to download and run the audited AWS inventory script.
 allowedTools: []
 ---

@@ -11,13 +11,14 @@ Generate project reference docs autonomously for CI. This is the setup command (
 
 ## When to Use
 
-- **DO:** Use when `/code-reviewer:ci-review` detects that `.claude/code-reviewer/reference/` does not exist or contains no `.md` files
+- **DO:** Use when `/code-reviewer:ci-review` detects that neither `.code-reviewer/reference/` nor `.claude/code-reviewer/reference/` contains `.md` files
 - **DO NOT:** Use in interactive sessions — use `/code-reviewer:setup` instead
 
 ## Workflow
 
 Follow the same process as `commands/setup.md` with these overrides:
 
+- **Config directory:** Write to `.code-reviewer/`.
 - **Skip Step 0** — Do not ask "Refresh or Start fresh?". Always generate fresh.
 - **Run Step 1 (Discovery)** — Identical to the setup command. No changes.
 - **Run Step 2 (Draft Generation)** — Identical to the setup command. No changes.

@@ -30,8 +30,8 @@ suggested_judges:
 The skill takes no explicit arguments — it reads everything from the project state:
 - `git diff <base_branch>...HEAD` for the changeset
 - `git log --oneline <base_branch>...HEAD` for commit messages
-- `.claude/code-reviewer/config.md` for project configuration (base_branch, languages, skip_phases)
-- `.claude/code-reviewer/reference/*.md` for reference documentation excerpts
+- `.code-reviewer/config.md` for project configuration (base_branch, languages, skip_phases)
+- `.code-reviewer/reference/*.md` for reference documentation excerpts
 
 ## Output Artifacts
 
@@ -71,4 +71,4 @@ Since the output is stdout-only, all judges use `{{ conversation }}` to access b
 4. **Semantic groupings**: files grouped by domain, not randomly or alphabetically
 5. **Excerpt precision**: reference docs excerpted, not full documents dumped
 
-The evaluation dataset must provide pre-configured `.claude/code-reviewer/` directories (config.md + reference docs) since triage fails without them. Each case should supply a git diff and commit messages for triage to process.
+The evaluation dataset must provide pre-configured `.code-reviewer/` directories (config.md + reference docs) since triage fails without them. Each case should supply a git diff and commit messages for triage to process.

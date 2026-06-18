@@ -1,14 +1,26 @@
 # ossm-ci Plugin
 
-Claude Code plugin providing CI utilities for the OpenShift Service Mesh (OSSM) team.
+CI utilities plugin for the OpenShift Service Mesh (OSSM) team. Works natively with both **Claude Code** and **Cursor**.
 
 ## Installation
+
+### Claude Code
 
 ```bash
 /plugin install ossm-ci@ci-utils
 ```
 
+### Cursor (local)
+
+```bash
+ln -s /path/to/ci-utils/plugins/ossm-ci ~/.cursor/plugins/ossm-ci
+```
+
+Then restart Cursor or run **Developer: Reload Window**.
+
 ## Commands
+
+> **Note:** In Claude Code, commands are namespaced as `/ossm-ci:confidence`, `/ossm-ci:aws-scan`, etc. In Cursor, commands appear without a plugin prefix (e.g., `/confidence`, `/aws-scan`) because Cursor does not yet support `plugin:command` namespacing. This is a [known Cursor limitation](https://forum.cursor.com/t/workspace-skill-resolution-issue-with-identical-skill-names/162287) with an open feature request.
 
 ### `/ossm-ci:confidence`
 Calculate a data-driven release confidence score (1-10) for an OSSM build using Report Portal test data.

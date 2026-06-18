@@ -23,7 +23,7 @@ The skill is driven by the **consolidated review findings and engineer responses
 
 ## Inputs
 
-The skill receives the `{review_context}` argument — the text of the consolidated review plus any engineer discussion. It reads the existing reference docs from `.claude/code-reviewer/reference/` to understand what's already documented before proposing additions.
+The skill receives the `{review_context}` argument — the text of the consolidated review plus any engineer discussion. It reads the existing reference docs from `.code-reviewer/reference/` to understand what's already documented before proposing additions.
 
 Interactive input via `AskUserQuestion` is central to the skill:
 - For each proposed convention update, the skill asks the engineer to **approve, decline, or refine** the proposed wording
@@ -32,7 +32,7 @@ Interactive input via `AskUserQuestion` is central to the skill:
 
 ## Output Artifacts
 
-The skill modifies reference doc files **in-place** at `.claude/code-reviewer/reference/`:
+The skill modifies reference doc files **in-place** at `.code-reviewer/reference/`:
 - `style-guide.md` (if style conventions are being added)
 - `testing-practices.md` (if testing patterns are being codified)
 - `api-conventions.md` (if API conventions are being added)
