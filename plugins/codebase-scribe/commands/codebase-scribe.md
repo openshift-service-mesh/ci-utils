@@ -1,4 +1,5 @@
 ---
+name: codebase-scribe
 description: Generate, enrich, and maintain agentic development documentation. Run with no args for auto-mode, or use focus:"description" for SME-directed documentation.
 argument-hint: '["context" | focus:"area description"]'
 ---

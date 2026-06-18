@@ -1,4 +1,5 @@
 ---
+name: review
 description: Run multi-phase code review on current branch changes
 argument-hint: [:adversarial | :style | :testing]
 ---
@@ -63,10 +64,13 @@ Check if a specific phase was requested:
 ## Step 1: Setup Guard
 
 Check that the project has been onboarded:
-1. Check if `.claude/code-reviewer/config.md` exists
-2. Check if `.claude/code-reviewer/reference/` directory exists with at least one `.md` file
+1. Check if `.code-reviewer/config.md` exists
+2. If not, fall back to `.claude/code-reviewer/config.md` (legacy path)
+3. Check if the corresponding `reference/` directory exists with at least one `.md` file
 
-If either is missing, stop and tell the user:
+Use whichever path has the config. If both exist, prefer `.code-reviewer/`. Throughout this document, `{config_dir}` refers to the resolved path.
+
+If neither location has these files, stop and tell the user:
 > "No project configuration found. Run `/code-reviewer:setup` first to analyze your codebase and generate reference docs. Without this, reviews won't have project-specific context for style and testing conventions."
 
 Do not proceed with the review.

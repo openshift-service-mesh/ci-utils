@@ -31,7 +31,7 @@ The skill takes no arguments — it operates entirely on the current working dir
 
 ## Output Artifacts
 
-The skill generates files in `.claude/code-reviewer/`:
+The skill generates files in `.code-reviewer/`:
 
 ### Reference Docs (`reference/` subdirectory)
 

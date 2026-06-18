@@ -1,0 +1,9 @@
+{
+  "name": "code-reviewer",
+  "version": "0.3.0",
+  "description": "Multi-phase code review with auto-maintained project conventions",
+  "author": { "name": "OSSM Team" },
+  "repository": "https://github.com/openshift-service-mesh/ci-utils",
+  "license": "Apache-2.0",
+  "keywords": ["code-review", "review-automation", "pr-review"]
+}

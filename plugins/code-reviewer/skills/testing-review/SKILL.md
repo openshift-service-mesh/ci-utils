@@ -18,7 +18,7 @@ Evaluate whether the code change is properly tested. This is the "is this proper
 
 You receive:
 - A **unit-scoped review brief** for the specific review unit you're checking
-- The project's **testing practices** reference doc from `.claude/code-reviewer/reference/testing-practices.md`
+- The project's **testing practices** reference doc from `.code-reviewer/reference/testing-practices.md`
 
 ## Review Focus
 

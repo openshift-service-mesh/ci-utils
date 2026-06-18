@@ -28,7 +28,7 @@ about the project that isn't captured in the reference docs:
 
 ## Setup
 
-1. Copy this file to `.claude/code-reviewer/config.md` in your project root
+1. Copy this file to `.code-reviewer/config.md` in your project root
 2. Run `/code-reviewer:setup` to analyze your codebase and generate reference docs
-3. Adjust the generated reference docs in `.claude/code-reviewer/reference/`
+3. Adjust the generated reference docs in `.code-reviewer/reference/`
 4. Run `/code-reviewer:review` to start reviewing your changes

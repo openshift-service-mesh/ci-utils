@@ -47,7 +47,7 @@ Or for new conventions:
 
 When updating a reference doc:
 
-1. Check if the doc exists at `.claude/code-reviewer/reference/`. Use the right doc for the convention type:
+1. Check if the doc exists at `.code-reviewer/reference/`. Use the right doc for the convention type:
    - Code style and naming → `style-guide.md`
    - Testing patterns → `testing-practices.md`
    - API design and endpoint conventions → `api-conventions.md`

@@ -1,4 +1,5 @@
 ---
+name: generate-e2e-tests
 description: Generate comprehensive Go E2E tests using BDD Ginkgo from project documentation.
 ---
 

@@ -16,18 +16,20 @@ Analyze the current git diff and produce structured review briefs that subagents
 
 ## Setup Guard
 
-Before doing any analysis, check that both exist:
-1. `.claude/code-reviewer/config.md` (project config)
-2. `.claude/code-reviewer/reference/` directory with at least one reference doc
+Before doing any analysis, verify that the project config exists:
+1. `.code-reviewer/config.md` (preferred)
+2. `.claude/code-reviewer/config.md` (legacy fallback)
 
-If either is missing, stop and tell the user:
+Use whichever path has the config. If both exist, prefer `.code-reviewer/`. Also verify the corresponding `reference/` directory has at least one reference doc.
+
+If neither location has these files, stop and tell the user:
 > "No project configuration found. Run `/code-reviewer:setup` first to analyze your codebase and generate reference docs."
 
 ## Workflow
 
 ### Step 1: Capture the Diff
 
-1. Read `.claude/code-reviewer/config.md` to get `base_branch` (default: auto-detect `main` or `master`)
+1. Read the resolved config file to get `base_branch` (default: auto-detect `main` or `master`)
 2. Run `git diff {base_branch}...HEAD --stat` to get the file list and change summary
 3. Run `git diff {base_branch}...HEAD` to get the full diff
 4. Run `git log {base_branch}..HEAD --oneline` to get commit messages
@@ -35,8 +37,8 @@ If either is missing, stop and tell the user:
 
 ### Step 2: Load Context
 
-1. Read `.claude/code-reviewer/config.md` — parse YAML frontmatter for config, read markdown body for project context
-2. Read all reference docs from `.claude/code-reviewer/reference/`:
+1. Read the config file — parse YAML frontmatter for config, read markdown body for project context
+2. Read all reference docs from the `reference/` directory (in the same location as config):
    - `style-guide.md`
    - `testing-practices.md`
    - `security-posture.md` (if exists)
