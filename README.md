@@ -6,10 +6,7 @@ Shared utilities to standardize and simplify build, test, and deployment pipelin
 
 - [Claude Code Plugin](#claude-code-plugin)
   - [Installation](#installation)
-    - [Step 1: Add the marketplace](#step-1-add-the-marketplace)
-    - [Step 2: Install the plugin](#step-2-install-the-plugin)
-    - [Step 3: Reload plugins](#step-3-reload-plugins)
-  - [Commands](#commands)
+  - [Available Plugins](#available-plugins)
 - [Repository Structure](#repository-structure)
   - [report\_portal/](#report_portal)
   - [skip\_tests/](#skip_tests)
@@ -64,90 +61,15 @@ This registers the repo as a marketplace using the `name` field from its `.claud
 >
 > The target GitHub repo must contain `.claude-plugin/marketplace.json` with a `plugins` array listing available plugins.
 
-### Commands — ossm-ci
+### Available Plugins
 
-#### `/ossm-ci:confidence`
-Calculates a data-driven release confidence score (1–10) for an OSSM build by analyzing test results from Report Portal. Determines the required test scope (FULL/CORE/BASIC), validates test matrix coverage across platforms and environments, and provides a scored breakdown with a GO/NO-GO release recommendation.
+| Plugin | Commands | Reference |
+|---|---|---|
+| `ossm-ci` | `/ossm-ci:confidence` `/ossm-ci:generate-e2e-tests` `/ossm-ci:aws-scan` `/ossm-ci:prow-metrics` | [`plugins/ossm-ci/README.md`](plugins/ossm-ci/README.md) |
+| `code-reviewer` | `/code-reviewer:setup` `/code-reviewer:review` `/code-reviewer:ci-review` | [`plugins/code-reviewer/README.md`](plugins/code-reviewer/README.md) |
+| `codebase-scribe` | `/codebase-scribe` | [`plugins/codebase-scribe/README.md`](plugins/codebase-scribe/README.md) |
 
-**Requires:** Report Portal MCP server configured in Claude Code.
-
----
-
-#### `/ossm-ci:generate-e2e-tests`
-Generates production-ready Go E2E tests using BDD Ginkgo from a project's documentation. Validates documentation quality against a scoring threshold (7/10 minimum), extracts hidden tags for retry/timeout/validation logic, and produces organized test files with helpers.
-
-Run from the **root of the target project**. Copy the config template to get started:
-```bash
-cp <ci-utils>/plugins/ossm-ci/skills/generate-e2e-tests/documentation-e2e-generator.yaml ./documentation-e2e-generator.yaml
-```
-
----
-
-#### `/ossm-ci:aws-scan`
-Gives you the exact commands to download and run the audited inventory script yourself. The script outputs two tables directly in your terminal: potentially dangling resources and a complete inventory. Claude does not execute anything — you run the script, you see the results.
-
-```bash
-curl -O https://raw.githubusercontent.com/openshift-service-mesh/ci-utils/main/scripts/aws-scan-audited.sh
-bash aws-scan-audited.sh
-```
-
-**Requires:** AWS CLI configured with valid credentials. See [`scripts/aws-scan-audited.sh`](scripts/aws-scan-audited.sh) for the full read-only script.
-
----
-
-#### `/ossm-ci:prow-metrics`
-Collects and presents Prow CI execution data for OSSM repositories (istio, proxy, sail-operator, ztunnel). Shows summary statistics, median execution times by job type, infrastructure usage, failed/pending jobs, and exports a TSV file for Excel import. Fetches directly from the Prow API — works from any project.
-
-**Requires:** `python3` available in PATH.
-
----
-
-### Commands — code-reviewer
-
-#### `/code-reviewer:setup`
-Onboard a project for code review. Analyzes your codebase, discovers existing standards and patterns, and interactively generates reference docs (style guide, testing practices, etc.). Run this once before your first review.
-
----
-
-#### `/code-reviewer:review`
-Run a multi-phase code review pipeline on your current branch changes. Dispatches three specialized review subagents in parallel (adversarial, style, testing), consolidates findings with deduplication, and produces a verdict.
-
-Supports phase-specific variants:
-```
-/code-reviewer:review                    # Full pipeline — all three phases
-/code-reviewer:review:adversarial        # Adversarial phase only
-/code-reviewer:review:style              # Style phase only
-/code-reviewer:review:testing            # Testing phase only
-```
-
----
-
-#### `/code-reviewer:ci-review`
-Fully autonomous code review for CI pipelines. Runs all three review phases without user interaction, auto-generates reference docs if they don't exist, and posts results directly to the PR as inline review comments and a summary comment.
-
-Designed for GitHub Actions workflows. See [`plugins/code-reviewer/README.md`](plugins/code-reviewer/README.md) for setup instructions and example workflow.
-
-**Requires:** Claude Code CLI, `ANTHROPIC_API_KEY`, `gh` CLI authenticated with PR read/write permissions.
-
-Also available for **Cursor** via install script. See [`plugins/code-reviewer/README.md`](plugins/code-reviewer/README.md) for full details, Cursor installation, and CI workflow examples.
-
----
-
-### Commands — codebase-scribe
-
-#### `/codebase-scribe`
-Generate, enrich, and maintain agentic development documentation. Auto-detects mode based on documentation state: **seed** (no docs — scans repo, proposes topics, creates stubs), **draft** (stubs exist — reads source code, fills content, extracts claims), or **maintain** (docs current — detects drift, auto-fixes references, flags changes for review).
-
-Supports context and focus arguments:
-```
-/codebase-scribe                                    # Auto-detect mode
-/codebase-scribe "we migrated from Webpack to Vite" # Context-biased topic selection
-/codebase-scribe focus:"auth and RBAC system"       # SME-directed deep documentation
-```
-
-Every documentation change goes through an automated review gate that verifies content against source code before finalizing.
-
-See [`plugins/codebase-scribe/README.md`](plugins/codebase-scribe/README.md) for configuration, output structure, and branching strategies.
+New to the skill system? See **[docs/README.md](docs/README.md)** for an overview of how plugins, commands, skills, and agents fit together, and **[docs/contributing.md](docs/contributing.md)** for how to add a skill.
 
 ---
 
@@ -304,6 +226,24 @@ Configuration and documentation supporting the `/ossm-ci:confidence` plugin comm
 
 The Claude Code skills marketplace structure. Contains plugins with commands and skills installable via `/plugin install`.
 
+```mermaid
+graph LR
+    MP["marketplace.json"] --> ossm["ossm-ci"]
+    MP --> cr["code-reviewer"]
+    MP --> cs["codebase-scribe"]
+
+    ossm --> o1["commands/\nconfidence\ngenerate-e2e-tests\naws-scan · prow-metrics"]
+    ossm --> o2["skills/\ngenerate-e2e-tests"]
+
+    cr --> c1["commands/\nsetup · review · ci-review"]
+    cr --> c2["agents/\nadversarial-reviewer\nstyle-reviewer · testing-reviewer"]
+    cr --> c3["skills/\ntriage · consolidation\nadversarial-review · ..."]
+
+    cs --> s1["commands/\ncodebase-scribe"]
+    cs --> s2["hooks/\ndoc-validate"]
+    cs --> s3["skills/\nscribe-discover · scribe-draft\nscribe-maintain · scribe-review"]
+```
+
 ```
 plugins/
 ├── ossm-ci/
@@ -350,6 +290,12 @@ plugins/
         └── prompts/
             └── review-adversarial.md
 ```
+
+---
+
+### `docs/`
+
+Two-page guide to the AI skills ecosystem: [`docs/README.md`](docs/README.md) explains the concepts and how to install plugins; [`docs/contributing.md`](docs/contributing.md) covers where skills belong and how to add one.
 
 ---
 
