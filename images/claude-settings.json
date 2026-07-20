@@ -1,4 +1,12 @@
 {
+  "extraKnownMarketplaces": {
+    "ai-helpers": {
+      "source": {
+        "source": "github",
+        "repo": "openshift-eng/ai-helpers"
+      }
+    }
+  },
   "permissions": {
     "allow": [
       "Bash(ls:*)",
