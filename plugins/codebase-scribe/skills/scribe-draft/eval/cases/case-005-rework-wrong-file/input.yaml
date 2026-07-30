@@ -1,0 +1,30 @@
+rework:
+  rework: true
+  iteration: 1
+  topic_name: cache-layer
+  tier: mature
+  # topic_content is the current on-disk content of docs/agents/cache-layer.md
+  # in this case directory, passed verbatim by the orchestrator per the
+  # SKILL.md Rework Brief Contents.
+  findings:
+    - tag: WRONG_FILE
+      location: "Cache Population"
+      evidence: >-
+        Doc says `NewKubeCache` lives in `cache/kube_cache.go`, but grep
+        shows it defined in `cache/informer_cache.go` — `cache/kube_cache.go`
+        does not exist in this repo.
+      suggestion: "Update the attribution to cache/informer_cache.go"
+  cited_source_files:
+    - cache/informer_cache.go
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+watch_paths: ["cache/"]
+# mode/topic_name are eval-only convenience fields (not part of the real
+# orchestrator brief) — they exist so {{ arguments.mode }} / {{
+# arguments.topic_name }} resolve in the LLM judge prompt, which templates
+# from input.yaml, not annotations.yaml.
+mode: rework
+topic_name: cache-layer

@@ -1,0 +1,8 @@
+docs_dir: docs/dev-notes
+topics:
+  - name: cli-commands
+    title: CLI Commands
+    watch_paths: ["cmd/cli/"]
+  - name: config-loading
+    title: Config Loading
+    watch_paths: ["internal/config/"]

@@ -1,0 +1,14 @@
+shallow: true is set directly in input.yaml — scribe-maintain trusts this
+threaded value and must not attempt its own `git rev-parse
+--is-shallow-repository` or `.git/shallow` probe.
+
+Implied history (for anyone re-authoring this case against a real shallow
+clone): internal/billing/legacy_charge.go was renamed to
+internal/billing/charge.go after billing.md's scan SHA. In a full clone this
+would resolve via `git log --diff-filter=R`; in a shallow clone that lookup is
+unavailable, so the broken reference must be reported without a "deleted"
+reason.
+
+notifications.md has zero entries in .claims.yml — §6 (Claim Consistency)
+must still extract claims for it even though the clone is shallow, since §6
+is not in the shallow-skip list.

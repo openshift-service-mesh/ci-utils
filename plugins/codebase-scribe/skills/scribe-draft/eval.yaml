@@ -1,15 +1,34 @@
 name: codebase-scribe-eval
-description: Evaluate scribe-draft for complete AGENT.md generation from codebase inventory
+description: Evaluate scribe-draft for two-tier topic drafting with claim/decision extraction and human attribution
 skill: codebase-scribe:scribe-draft
 
 execution:
   mode: case
-  arguments: ""
-  timeout: 2400
+  # The orchestrator's draft brief. An empty arguments string left the skill
+  # with no batch, no repo flags and no docs_dir to act on. JSON is used for
+  # the structured fields because it is unambiguous and valid YAML.
+  arguments: |
+    docs_dir: {{ input.docs_dir }}
+    default_branch: {{ input.default_branch }}
+    branching_strategy: {{ input.branching_strategy }}
+    current_branch: {{ input.current_branch }}
+    shallow: {{ input.shallow }}
+    {%- if input.batch is defined %}
+    batch: {{ input.batch | tojson }}
+    {%- endif %}
+    {%- if input.rework is defined %}
+    watch_paths: {{ input.watch_paths | tojson }}
+    rework: {{ input.rework | tojson }}
+    {%- endif %}
+  # 3600: the enrichment case (002) works legitimately past 2400 now that the
+  # skill routes writes through scribe-lib verbs (more, smaller tool calls).
+  timeout: 3600
   max_budget_usd: 8.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
@@ -18,57 +37,91 @@ models:
 
 permissions:
   allow:
-    - Skill
+    - Read
+    - Write
+    - Edit
+    - Bash
+    - Glob
+    - Grep
   deny: []
 
 mlflow:
   experiment: codebase-scribe-eval
 
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-draft/eval/cases
+  path: eval/cases
+  workspace:
+    # Each entry is a case-relative path copied verbatim, preserving its name;
+    # entries a given case does not carry are skipped. The source trees live at
+    # the case root (their basenames vary by case: internal/, cache/), because
+    # watch_paths name them at the repo root — under a nested container the
+    # drafted content would cite paths that do not exist. Every file the skill
+    # writes or edits (the topic at docs_dir/<name>.md, docs_dir/.claims.yml,
+    # STATUS.md) comes back through stock's changed-files collection under a
+    # `_modified/` prefix, which the judges' path lookups tolerate; a topic the
+    # skill correctly leaves untouched is ABSENT, proving it was not modified.
+    files:
+      - internal
+      - cache
+      - docs
+      - .scribe.yml
   schema: |
     Each case directory contains:
-    - input.yaml: YAML file with:
-      * scope: one of "full" (new project) or "section" (add specific section to existing AGENT.md)
-      * audience: intended audience (e.g., "developer", "contributor", "operator")
-      * focus: optional list of sections to emphasize (e.g., ["architecture", "testing"])
-    - .claude/scribe/inventory.yaml: pre-generated inventory from scribe-discover
-      (must exist for scribe-draft to operate without running discover first)
-    - src/: sample source code for context during section drafting
-    - existing_agent_md/: optional existing AGENT.md for "section" scope cases
-    - answers.yaml: responses for interactive prompts
-      (e.g., audience confirmation questions)
-    - annotations.yaml:
-      * expected_sections: list of section names expected in the output AGENT.md
-      * expected_min_length: minimum character count for generated AGENT.md
-      * expected_mentions: list of keywords/component names that must appear in the doc
+    - input.yaml: the orchestrator brief scribe-draft receives — YAML with:
+      * batch: list of topics to draft, each with its current frontmatter
+        (name, scan, freshness, human_input, completeness, inferred_sections,
+        human_sections, decisions, question_passes, watch_paths, stale_flags)
+        plus `tier: stub|mature` — the orchestrator's Step 5 maturity test,
+        threaded per-topic and never re-derived by the skill. In the rework
+        case it sits in the `rework:` block, the rework brief's own copy of
+        the same field
+      * default_branch, branching_strategy, current_branch, shallow, docs_dir —
+        threaded orchestrator state, never re-detected by the skill
+      * question_pass: true, OR rework: {rework: true, iteration, findings: [...]}
+        — mutually exclusive mode flags; absent for normal drafting
+      * context: optional user-provided focus string
+    - <docs_dir>/<name>.md: the topic file's current on-disk state (stub or
+      mature) matching the frontmatter in input.yaml
+    - <docs_dir>/.claims.yml: pre-existing claims for the docs_dir, if any
+    - the case's source tree at the case root (internal/ or cache/): source code
+      within the batch's watch_paths for the skill to read
+    - .scribe.yml: fixture config, identical in every case — `review.enabled:
+      false`, so the Review Gate (which dispatches an agent this suite's
+      permission allowlist does not grant) is skipped and the run terminates at
+      the skill's own boundary. See eval.md's Deliberately Uncovered list
+    - answers.yaml: LLM-answerer guidance for AskUserQuestion calls (§6/§7
+      design-decision prompts, decision-drift resolution, Standard Files prompts)
+    - annotations.yaml: expected-outcome fields — see individual judges below for
+      which fields each one consumes; unused fields are ignored per case.
+      The answer key lives here and only here: input.yaml is passed to the skill
+      under test, so no field naming a seeded defect or an expected outcome may
+      appear there — it would tell the skill what it is supposed to produce.
+      Judges needing that information template it as
+      {{ outputs.annotations.<field> }}, never {{ arguments.<field> }}. The rule
+      is scoped to the answer key: ordinary brief-derived context the skill is
+      meant to see may be templated from {{ arguments.<field> }} — draft_quality
+      does exactly that with `mode` and `topic_name`, neither of which names a
+      seeded defect or an expected outcome.
 
 inputs:
   tools:
-    - match: AskUserQuestion (scribe-draft may ask for audience or section focus clarification)
+    - match: AskUserQuestion (scribe-draft asks §6 design-decision questions, §7 focus-mode questions, Standard Files generation prompts, and decision-drift resolution prompts)
       prompt: |
-        Use answers.yaml to respond. If asked about audience, use input.yaml audience value.
-        If asked about scope or focus, use input.yaml scope and focus values.
-        Default to "developer" audience and "full" scope if answers.yaml doesn't specify.
+        Use answers.yaml to respond. If it specifies an `answer` for a design
+        decision or focus-mode question, provide that as free-text ("Other").
+        If it specifies `skip: true` for a question, select the "no special
+        reason / convention" or equivalent skip option. For decision-drift
+        resolution prompts, select the option named in `decision_drift_choice`
+        ("still_valid", "other", or "no_longer_relevant"). For Standard Files
+        prompts, select the files listed in `standard_files_to_generate` (empty
+        list means decline all).
 
 outputs:
   - path: output
     schema: |
-      AGENT.md written to the project root (or section appended to existing AGENT.md).
-      Use outputs["files"] to access generated content.
-      AGENT.md structure (for full scope):
-        # Project Overview
-        # Architecture
-        ## Components (with descriptions and file paths)
-        ## Data Flow (optional)
-        # Development Guide
-        ## Setup
-        ## Building and Testing
-        ## Common Commands
-        # Key Conventions
-        ## Code Organization
-        ## Testing Conventions
-        # Contributing
+      Topic files written/updated at <docs_dir>/<name>.md, claims appended to
+      <docs_dir>/.claims.yml, and <docs_dir>/STATUS.md regenerated. Use
+      outputs["files"] to access the full working tree after the run.
 
 traces:
   stdout: true
@@ -82,111 +135,422 @@ judges:
     arguments:
       max_cost_usd: 7.0
 
-  - name: agent_md_generated
+  - name: two_tier_structure
     description: |
-      Verifies that AGENT.md was created at the project root with sufficient length
-      and required section headers.
+      §1 two-tier structure contract. Stub topics must end up with exactly the
+      five skeleton `##` sections plus a TL;DR blockquote. Mature topics must
+      keep a TL;DR blockquote but may use free-form domain headings.
     check: |
-      files = outputs.get("files", {})
-      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
-      if not agent_md_keys:
-          return (False, "AGENT.md not found in generated files")
-      content = files[agent_md_keys[0]]
-      annotations = outputs.get("annotations", {})
-      min_length = annotations.get("expected_min_length", 500)
-      if len(content) < min_length:
-          return (False, f"AGENT.md too short: {len(content)} chars (expected {min_length}+)")
-      return (True, f"AGENT.md generated: {len(content)} chars at {agent_md_keys[0]}")
+      import re
+      # The normative denominator (orchestrator Step 3, draft §8, maintain §8)
+      # and the structure contract are both fence-aware: a "## " line inside a
+      # fenced block is sample text, not a section. A plain ^##\s+ scan counts
+      # it, so a compliant topic that documents Markdown syntax failed both this
+      # judge and the human_input assertion below. One extractor, used by both.
+      def headings_of(body):
+          out = []
+          fenced = False
+          for line in body.split("\n"):
+              if line.startswith("```") or line.startswith("~~~"):
+                  fenced = not fenced
+                  continue
+              if fenced:
+                  continue
+              m = re.match(r'^##\s+(.+)$', line)
+              if m:
+                  out.append(m.group(1).strip())
+          return out
 
-  - name: required_sections_present
-    description: |
-      Verifies that expected section headers from annotations appear in the AGENT.md.
-    check: |
       files = outputs.get("files", {})
       annotations = outputs.get("annotations", {})
-      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
-      if not agent_md_keys:
-          return (True, "AGENT.md not found — see agent_md_generated judge")
-      content = files[agent_md_keys[0]].lower()
-      expected_sections = annotations.get("expected_sections", ["architecture", "development"])
-      missing = [s for s in expected_sections if s.lower() not in content]
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("topic_name")
+      if not topic:
+          return (True, "No single topic_name annotation — skipped for this case")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      if not key:
+          return (False, f"{topic}.md not found in output")
+      content = files[key]
+      body = content.split("---", 2)[-1] if content.startswith("---") else content
+      body = body.lstrip()
+      if not re.match(r'^#\s+.+\n+>\s', body):
+          return (False, "Missing TL;DR blockquote as first line after H1")
+      was_stub = annotations.get("was_stub", False)
+      headings = headings_of(body)
+      if was_stub:
+          required = ["Key Entry Points", "Patterns & Conventions", "Gotchas", "Dependencies & Context", "Links"]
+          if headings != required:
+              return (False, f"Stub draft sections {headings} != required {required}")
+      else:
+          preserved = annotations.get("expected_preserved_headings", [])
+          missing = [h for h in preserved if h not in headings]
+          if missing:
+              return (False, f"Mature topic lost required headings: {missing}")
+      return (True, "Two-tier structure contract satisfied")
+
+  - name: human_sections_attribution
+    description: |
+      Cross-cutting attribution rule: an answered design-decision question adds
+      its section's top-level slug to human_sections (and removes it from
+      inferred_sections), and human_input is recalculated as (credited slugs
+      whose headings exist / total fence-aware ## sections) x 100.
+    check: |
+      import yaml, re
+      # Same fence-aware extractor as two_tier_structure — §8's denominator is
+      # "total fence-aware ## sections", so counting fenced sample headings
+      # inflates it and fails a compliant topic on its human_input score.
+      def headings_of(body):
+          out = []
+          fenced = False
+          for line in body.split("\n"):
+              if line.startswith("```") or line.startswith("~~~"):
+                  fenced = not fenced
+                  continue
+              if fenced:
+                  continue
+              m = re.match(r'^##\s+(.+)$', line)
+              if m:
+                  out.append(m.group(1).strip())
+          return out
+
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("topic_name")
+      if not topic:
+          return (True, "No single topic_name annotation — skipped for this case")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      if not key:
+          return (False, f"{topic}.md not found in output")
+      content = files[key]
+      fm_match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL)
+      if not fm_match:
+          return (False, "No frontmatter found")
+      fm = yaml.safe_load(fm_match.group(1))
+      scribe = fm.get("scribe", fm)
+      expected_human_sections = annotations.get("expected_human_sections_include", [])
+      human_sections = scribe.get("human_sections", []) or []
+      missing = [s for s in expected_human_sections if s not in human_sections]
       if missing:
-          return (False, f"Required sections missing from AGENT.md: {missing}")
-      return (True, f"All expected sections present: {expected_sections}")
+          return (False, f"human_sections missing expected slugs: {missing} (got {human_sections})")
+      # Some incorporation targets are genuinely ambiguous by contract (§6/§7:
+      # "appending to Dependencies & Context or Gotchas") — accept any ONE of
+      # a set of legal alternatives rather than hard-requiring a specific slug.
+      any_of_groups = annotations.get("expected_human_sections_include_any_of_groups")
+      if any_of_groups is None:
+          single_any_of = annotations.get("expected_human_sections_include_any_of")
+          any_of_groups = [single_any_of] if single_any_of else []
+      unmet_groups = [g for g in any_of_groups if not any(s in human_sections for s in g)]
+      if unmet_groups:
+          return (False, f"None of the legal alternative slugs {unmet_groups} were credited (got {human_sections})")
+      credited_targets = list(expected_human_sections)
+      for g in any_of_groups:
+          credited_targets += [s for s in g if s in human_sections]
+      inferred_ids = [e.get("id") for e in (scribe.get("inferred_sections") or [])]
+      leaked = [s for s in credited_targets if s in inferred_ids]
+      if leaked:
+          return (False, f"Slugs credited to human_sections still present in inferred_sections: {leaked}")
+      body = content.split("---", 2)[-1]
+      live_headings = headings_of(body)
+      total_sections = len(live_headings)
+      existing_slugs = set()
+      for h in live_headings:
+          # Draft §4's slug algorithm: lowercase, strip everything but
+          # letters/numbers/spaces/hyphens, then replace EACH space with a
+          # hyphen individually (not collapsed) — "Patterns & Conventions"
+          # loses "&" but keeps both surrounding spaces, so it slugs to
+          # "patterns--conventions", per the SKILL.md worked example.
+          slug = re.sub(r'[^a-z0-9\s-]', '', h.lower()).strip()
+          slug = slug.replace(' ', '-')
+          existing_slugs.add(slug)
+      credited = [s for s in human_sections if s in existing_slugs]
+      # §8 states the formula but no rounding rule, so the judge must not
+      # invent one: 1 of 8 sections is 12.5, and both 12 and 13 are
+      # spec-correct (Python's round() would demand 12, banker's-rounding an
+      # exact .5 down). Compare against the unrounded percentage with a
+      # tolerance of 1 instead — wide enough to admit either rounding
+      # direction, far too narrow to admit a genuinely wrong denominator.
+      exact_human_input = (len(credited) / total_sections) * 100 if total_sections else 0
+      actual = scribe.get("human_input")
+      if annotations.get("check_human_input_exact", True):
+          numeric = isinstance(actual, (int, float)) and not isinstance(actual, bool)
+          if not numeric or abs(actual - exact_human_input) > 1:
+              return (False, f"human_input={actual}, expected {exact_human_input:g} +/-1 (({len(credited)} credited slug(s) with a live heading/{total_sections} sections)x100)")
+      return (True, f"human_sections={human_sections}, human_input={actual}")
 
-  - name: component_mentions
+  - name: claims_and_decisions
     description: |
-      Checks that key component names from inventory.yaml are mentioned in AGENT.md.
+      §4 knowledge persistence. Claims are extracted with block-YAML provenance;
+      a user-answered claim gets a matching decisions: frontmatter entry written
+      with the same id, immediately after extraction.
     check: |
-      import yaml
+      import yaml, re
       files = outputs.get("files", {})
       annotations = outputs.get("annotations", {})
-      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
-      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
-      if not agent_md_keys:
-          return (True, "AGENT.md not found — see agent_md_generated judge")
-      content = files[agent_md_keys[0]]
-      expected_mentions = annotations.get("expected_mentions", [])
-      if not expected_mentions and inv_keys:
-          inv = yaml.safe_load(files[inv_keys[0]])
-          expected_mentions = [c["name"] for c in inv.get("architecture", {}).get("components", [])[:3]]
-      missing = [m for m in expected_mentions if m.lower() not in content.lower()]
-      if len(missing) > len(expected_mentions) * 0.3:
-          return (False, f"Key components not mentioned in AGENT.md: {missing}")
-      return (True, f"Key component mentions verified ({len(expected_mentions) - len(missing)}/{len(expected_mentions)})")
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("topic_name")
+      if not topic:
+          return (True, "No single topic_name annotation — skipped for this case")
+      claims_key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/.claims.yml")), None)
+      if not claims_key:
+          return (False, ".claims.yml not found in output")
+      claims_doc = yaml.safe_load(files[claims_key]) or {}
+      topic_claims = [c for c in claims_doc.get("claims", []) if c.get("topic") == topic]
+      if annotations.get("expect_claims", True) and not topic_claims:
+          return (False, f"No claims extracted for topic '{topic}'")
+      max_claims = annotations.get("max_claims", 20)
+      if len(topic_claims) > max_claims:
+          return (False, f"{len(topic_claims)} claims exceeds proportional cap of {max_claims}")
+      user_claims = [c for c in topic_claims if (c.get("provenance") or {}).get("origin") == "user"]
+      expected_user_claim_text = annotations.get("expected_user_claim_contains")
+      if expected_user_claim_text:
+          matched = [c for c in user_claims if expected_user_claim_text.lower() in c.get("claim", "").lower()]
+          if not matched:
+              return (False, f"No user-origin claim contains '{expected_user_claim_text}'")
+          claim = matched[0]
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+          fm = yaml.safe_load(re.search(r'^---\n(.*?)\n---', files[key], re.DOTALL).group(1))
+          scribe = fm.get("scribe", fm)
+          decisions = scribe.get("decisions", []) or []
+          matching_decision = next((d for d in decisions if d.get("id") == claim.get("id")), None)
+          if not matching_decision:
+              return (False, f"No decisions: entry with id={claim.get('id')} matching the user claim")
+          if matching_decision.get("status") != "active":
+              return (False, f"decisions: entry status={matching_decision.get('status')}, expected 'active'")
+      return (True, f"{len(topic_claims)} claim(s) for '{topic}', {len(user_claims)} user-origin")
 
-  - name: no_inventory_leakage
+  - name: safety_rules_respected
     description: |
-      Verifies that AGENT.md does not contain raw YAML from inventory.yaml.
-      The inventory is a machine format; AGENT.md should be prose documentation.
+      Safety Rule 2 (existing verified prose in human_sections preserved
+      verbatim) and rework-mode/question-pass-mode scope limits, keyed off
+      per-case annotations.
     check: |
       import re
       files = outputs.get("files", {})
-      agent_md_keys = [k for k in files if k.endswith("AGENT.md") and "node_modules" not in k]
-      if not agent_md_keys:
-          return (True, "No AGENT.md to check")
-      content = files[agent_md_keys[0]]
-      yaml_blocks = re.findall(r'```yaml\n(.*?)```', content, re.DOTALL)
-      inventory_keys = ["entry_points:", "key_directories:", "test_framework:", "build_system:"]
-      for block in yaml_blocks:
-          for key in inventory_keys:
-              if key in block:
-                  return (False, f"Raw inventory YAML key '{key}' found in AGENT.md code block — doc should use prose")
-      return (True, "No raw inventory YAML leakage detected")
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("topic_name")
+      problems = []
+      if topic:
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+          content = files.get(key, "") if key else ""
+          for snippet in annotations.get("expected_verbatim_preserved", []):
+              if snippet not in content:
+                  problems.append(f"Preserved prose snippet missing/altered: {snippet[:60]!r}")
+          for snippet in annotations.get("expected_unchanged_sections_contain", []):
+              if snippet not in content:
+                  problems.append(f"Untouched section content missing: {snippet[:60]!r}")
+          for snippet in annotations.get("expected_content_contains", []):
+              if snippet not in content:
+                  problems.append(f"Expected corrected content missing: {snippet[:60]!r}")
+          for snippet in annotations.get("expected_content_not_contains", []):
+              if snippet in content:
+                  problems.append(f"Content that should have been corrected away is still present: {snippet[:60]!r}")
+      forbidden_phrases = annotations.get("forbidden_changelog_phrases", [])
+      if topic and forbidden_phrases:
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+          content = files.get(key, "") if key else ""
+          for phrase in forbidden_phrases:
+              if phrase.lower() in content.lower():
+                  problems.append(f"Changelog language found: '{phrase}'")
+      if annotations.get("no_questions_expected") and topic:
+          conversation = outputs.get("conversation", "")
+          if re.search(r'while documenting.*why this approach', conversation, re.IGNORECASE):
+              problems.append("A §6/§7 design-decision question was asked despite mode forbidding it")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, "Safety-rule / scope checks passed")
 
-  - name: documentation_quality
+  - name: mode_stamping_and_scope
     description: |
-      LLM evaluates whether AGENT.md is well-written prose documentation
-      that would actually help a developer understand and work with the codebase.
+      Mode-specific stamping rules: rework stamps freshness:100 only, leaving
+      human_input/completeness at their prior values and re-extracting claims
+      only for changed sections; question-pass increments question_passes and
+      caps extraction at one claim; decision-drift resolution tombstones a
+      retired decision (status: retired, resolved_at stamped) and removes its
+      claim to _retired_ids.
+    check: |
+      import yaml, re
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("topic_name")
+      if not topic:
+          return (True, "No single topic_name annotation — skipped for this case")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      if not key:
+          return (False, f"{topic}.md not found in output")
+      content = files[key]
+      fm_match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL)
+      if not fm_match:
+          return (False, "No frontmatter found")
+      fm = yaml.safe_load(fm_match.group(1))
+      scribe = fm.get("scribe", fm)
+      problems = []
+
+      if "expected_freshness" in annotations:
+          if scribe.get("freshness") != annotations["expected_freshness"]:
+              problems.append(f"freshness={scribe.get('freshness')}, expected {annotations['expected_freshness']}")
+      if "expected_prior_human_input" in annotations:
+          if scribe.get("human_input") != annotations["expected_prior_human_input"]:
+              problems.append(f"human_input={scribe.get('human_input')} changed from prior {annotations['expected_prior_human_input']} — rework/question-pass must not recalculate it")
+      if "expected_prior_completeness" in annotations:
+          if scribe.get("completeness") != annotations["expected_prior_completeness"]:
+              problems.append(f"completeness={scribe.get('completeness')} changed from prior {annotations['expected_prior_completeness']} — rework must not recalculate it")
+      if "expected_question_passes" in annotations:
+          if scribe.get("question_passes") != annotations["expected_question_passes"]:
+              problems.append(f"question_passes={scribe.get('question_passes')}, expected {annotations['expected_question_passes']}")
+      # Question-Pass Mode's NOT-done list: the pass must not advance `scan`.
+      # Compared as strings so a fixture SHA that YAML happens to load as a
+      # number (all-digit) still compares equal to the written frontmatter.
+      if annotations.get("expected_scan_unchanged"):
+          if str(scribe.get("scan")) != str(annotations["expected_scan_unchanged"]):
+              problems.append(f"scan={scribe.get('scan')!r}, expected unchanged {annotations['expected_scan_unchanged']!r} — a question pass stamps neither scan nor freshness")
+
+      if annotations.get("expected_decision_id"):
+          did = annotations["expected_decision_id"]
+          decisions = scribe.get("decisions", []) or []
+          entry = next((d for d in decisions if d.get("id") == did), None)
+          if not entry:
+              problems.append(f"No decisions: entry with id={did}")
+          else:
+              if annotations.get("expected_decision_status") and entry.get("status") != annotations["expected_decision_status"]:
+                  problems.append(f"decisions[{did}].status={entry.get('status')}, expected {annotations['expected_decision_status']}")
+              if annotations.get("expected_decision_status") == "retired" and not entry.get("resolved_at"):
+                  problems.append(f"decisions[{did}] is retired but has no resolved_at stamp")
+          # Retirement is two independent requirements — the ID stays reserved
+          # in _retired_ids, AND the claim is gone from claims — so they are
+          # asserted independently. Conjoined ("not reserved AND still
+          # present"), either violation on its own passed: removing the claim
+          # without reserving its ID frees the ID for reuse, and reserving the
+          # ID while leaving the retired claim active keeps a retired decision
+          # in circulation. A missing .claims.yml fails loudly rather than
+          # skipping both halves silently.
+          claims_key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/.claims.yml")), None)
+          if annotations.get("expected_retired_claim_id"):
+              rid = annotations["expected_retired_claim_id"]
+              if not claims_key:
+                  problems.append(f"{docs_dir}/.claims.yml is absent, so neither half of claim {rid}'s retirement can be checked")
+              else:
+                  claims_doc = yaml.safe_load(files[claims_key]) or {}
+                  retired_ids = claims_doc.get("_retired_ids", {})
+                  topic_retired = retired_ids.get(topic, []) if isinstance(retired_ids, dict) else retired_ids
+                  still_present = any(c.get("id") == rid for c in claims_doc.get("claims", []))
+                  if rid not in (topic_retired or []):
+                      problems.append(f"Retired claim {rid} is absent from _retired_ids — the ID must stay reserved against reuse")
+                  if still_present:
+                      problems.append(f"Retired claim {rid} is still present in claims — retiring the decision must remove it")
+          if annotations.get("expected_stale_flag_removed"):
+              stale_flags = scribe.get("stale_flags", []) or []
+              still_flagged = [f for f in stale_flags if f.get("reason") == annotations["expected_stale_flag_removed"] and f.get("id") == f"decision-{did}"]
+              if still_flagged:
+                  problems.append(f"stale_flag for decision-{did} was not removed after resolution")
+
+      # Question-Pass Mode's NOT-done list also forbids clearing live stale
+      # flags. Nothing asserted it, and the only question-pass case started with
+      # `stale_flags: []`, so the prohibited behaviour had no fixture that could
+      # expose it: an implementation that wiped the list passed every judge.
+      # The comparison is the WHOLE list against the whole expectation, not each
+      # expected flag looked up by id: a per-flag subset walk caught clearing and
+      # edited fields, but passed a field added to a seeded flag and passed a
+      # brand-new flag appended beside it — both of them this mode writing to a
+      # list it is required to leave exactly as it found it.
+      if "expected_stale_flags_preserved" in annotations:
+          expected_flags = annotations["expected_stale_flags_preserved"] or []
+          actual_flags = scribe.get("stale_flags", []) or []
+          if actual_flags != expected_flags:
+              expected_ids = [f.get("id") for f in expected_flags if isinstance(f, dict)]
+              actual_ids = [f.get("id") for f in actual_flags if isinstance(f, dict)]
+              detail = []
+              added = [i for i in actual_ids if i not in expected_ids]
+              removed = [i for i in expected_ids if i not in actual_ids]
+              if added:
+                  detail.append(f"flags added: {added}")
+              if removed:
+                  detail.append(f"flags removed: {removed}")
+              for want in expected_flags:
+                  got = next((f for f in actual_flags if isinstance(f, dict) and f.get("id") == want.get("id")), None)
+                  if got is not None and got != want:
+                      changed = {k: (got.get(k), want.get(k)) for k in set(got) | set(want) if got.get(k) != want.get(k)}
+                      detail.append(f"{want.get('id')!r} altered (got, expected): {changed}")
+              problems.append("stale_flags did not carry through exactly ("
+                              + ("; ".join(detail) or "same flags, different order")
+                              + f"): got {actual_flags!r}, expected {expected_flags!r}")
+
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, "Mode-specific stamping and scope checks passed")
+
+  - name: draft_quality
+    description: |
+      LLM evaluates overall correctness of the draft against the §1/§4 contracts
+      and the mode-specific pipeline (normal draft, rework, or question-pass).
     prompt: |
-      Evaluate the quality of the generated AGENT.md documentation.
+      Evaluate this scribe-draft run.
+
+      Mode: {{ arguments.mode }}
+      Topic: {{ arguments.topic_name }}
+
+      Transcript and outputs:
+      {{ conversation }}
 
       {{ outputs }}
 
       Assess:
-      1. Is the Project Overview concise and informative (not just "This is a project")?
-      2. Does the Architecture section explain component relationships, not just list components?
-      3. Are Development Guide commands specific and runnable (not "run tests" but "go test ./...")?
-      4. Are Key Conventions grounded in what was actually discovered, not generic advice?
-      5. Is the document well-structured for a new contributor to get oriented quickly?
+      1. Does the topic content match the two-tier contract (stub skeleton vs.
+         mature free-form) and read as present-state prose with no changelog
+         language ("was added", "now supports", "previously", etc.)?
+      2. Are citations concrete (`symbol in file`, never bare line numbers) and
+         volatile inventories described by location rather than enumerated?
+      3. Were claims extracted with correct provenance, and — if a design
+         decision was answered — is there a matching decisions: entry?
+      4. If this is a rework or question-pass, did the skill respect that mode's
+         narrower scope (only cited sections / only the single §6 question) and
+         avoid running the full pipeline?
+      5. Are the scores (freshness/human_input/completeness) consistent with
+         what the mode is supposed to stamp?
 
       Score 1-5:
-      1: Generic boilerplate — could apply to any project; commands wrong or missing
-      2: Some project-specific content but mostly generic; gaps in key sections
-      3: Adequately specific but some sections are vague or commands unverified
-      4: Good specificity with runnable commands and accurate architecture description
-      5: Excellent: project-specific, comprehensive, a new contributor could use it immediately
+      1: Wrong structure, changelog language, or ran the wrong pipeline for the mode
+      2: Structure mostly right but scores or provenance clearly wrong
+      3: Correct mechanics but some concreteness or scoping issues
+      4: Solid draft with a minor gap
+      5: Fully matches the contract for this mode
+
+    arguments:
+      mode: "{{ arguments.mode }}"
+      topic_name: "{{ arguments.topic_name }}"
 
 thresholds:
+# This suite has 5 cases, so any min_pass_rate above 0.8 already requires 5/5:
+# 0.9 was arithmetically identical to 1.0 and only read as tolerance for one
+# flaky case. Stated as 1.0 honestly rather than lowered to 0.8 — several cases
+# turn on a single deliberately-constructed discriminating assertion, and
+# admitting one failure would let exactly those regress silently. (The figure
+# speaks for this suite only: sibling suites size their own thresholds.)
+#
+# Three judges run at an accepted-baseline threshold instead (owner decision
+# 2026-07-29, reaffirmed 2026-07-30 after the state-writer wave): the failing
+# behaviors are multi-write bookkeeping sequences — claims extraction when
+# .claims.yml must be created, question-pass crediting and counter, the
+# decision-retire sequence. scribe-lib's fm/claims verbs make each a single
+# enforced call and cases pass when the session invokes them (verified), but
+# invocation itself proved run-to-run variant for the pinned case model in
+# one-shot isolation, surviving prompt-side fixes (inline invocation recipe,
+# run-never-read, HARD RULE 5). 0.6 = the measured floor; any NEW failure
+# class still trips it. Revisit on a case-model bump or if the orchestrator
+# gains post-condition enforcement.
   budget_check:
     min_pass_rate: 1.0
-  agent_md_generated:
+  two_tier_structure:
     min_pass_rate: 1.0
-  required_sections_present:
-    min_pass_rate: 0.9
-  component_mentions:
-    min_pass_rate: 0.9
-  no_inventory_leakage:
+  human_sections_attribution:
+    min_pass_rate: 0.6
+  claims_and_decisions:
+    min_pass_rate: 0.6
+  safety_rules_respected:
     min_pass_rate: 1.0
-  documentation_quality:
+  mode_stamping_and_scope:
+    min_pass_rate: 0.6
+  draft_quality:
     min_mean: 3.5

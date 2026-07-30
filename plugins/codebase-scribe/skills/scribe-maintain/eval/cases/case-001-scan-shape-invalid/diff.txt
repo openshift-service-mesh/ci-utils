@@ -1,0 +1,5 @@
+No meaningful diff is expected to be computed for this case: the topic's
+`scan` value ("not-a-real-sha") fails the shape test
+(^[0-9a-f]{7,40}$), so scribe-maintain's §1 (Scope the Diff) must report full
+churn without running `git diff --stat <scan>..HEAD -- internal/search/`, and
+§8 must leave `freshness` at its prior value (55) rather than recomputing it.

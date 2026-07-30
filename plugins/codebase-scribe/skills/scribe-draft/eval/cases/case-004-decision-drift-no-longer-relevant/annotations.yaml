@@ -1,0 +1,22 @@
+docs_dir: docs/agents
+topic_name: data-retention
+mode: decision-drift
+was_stub: false
+expected_preserved_headings:
+  - Overview
+  - Dependencies & Context
+  - Links
+check_human_input_exact: false
+expect_claims: true
+max_claims: 20
+expected_freshness: 100
+expected_decision_id: data-retention-3
+expected_decision_status: retired
+expected_retired_claim_id: data-retention-3
+expected_stale_flag_removed: decision_drift
+forbidden_changelog_phrases:
+  - now supports
+  - was added
+  - previously
+  - formerly
+  - is now

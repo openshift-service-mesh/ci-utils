@@ -1,0 +1,45 @@
+docs_dir: docs/agents
+topic_name: observability
+mode: question-pass
+was_stub: false
+expected_preserved_headings:
+  - Key Entry Points
+  - Patterns & Conventions
+  - Gotchas
+  - Dependencies & Context
+  - Links
+expected_human_sections_include_any_of:
+  - dependencies--context
+  - gotchas
+check_human_input_exact: true
+expect_claims: true
+max_claims: 1
+expected_user_claim_contains: prefix
+expected_question_passes: 1
+# A question pass is neither a draft nor a rework, so §8/§10's question-pass
+# exclusion forbids it stamping either score-of-record. Both prior values are
+# asserted unchanged: without them the counter assertion above passes even for
+# a run that took the full drafting pipeline and stamped freshness: 100.
+expected_freshness: 45
+expected_scan_unchanged: "9999999fff8888eee7777ddd6666ccc5555bbb0"
+forbidden_changelog_phrases:
+  - now supports
+  - was added
+  - previously
+  - formerly
+  - is now
+# A question pass recalculates neither score of record. completeness was the one
+# the judge already supported and this case never supplied, so a run that
+# recomputed it passed.
+expected_prior_completeness: 55
+# ...and Question-Pass Mode's NOT-done list forbids clearing live stale flags.
+# The case now seeds one whose reason routes nowhere ("semantic" is neither
+# "escalated" nor "decision_drift", so Step 5's classification is unaffected),
+# and asserts it survives byte-for-byte. With the old empty list the prohibition
+# had no fixture that could ever fail.
+expected_stale_flags_preserved:
+  - id: patterns--conventions
+    heading: "## Patterns & Conventions"
+    flagged_at_sha: "1111111aaa2222bbb3333ccc4444ddd5555eee6"
+    reason: "semantic"
+    detail: "Registry wiring may have changed since this section was written."

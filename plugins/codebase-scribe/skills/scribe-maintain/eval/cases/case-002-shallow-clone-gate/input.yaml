@@ -1,0 +1,52 @@
+topics:
+  - name: billing
+    title: Billing
+    tier: mature
+    # Shallow clone: Step 3's gate skips scan validation and Step 5's
+    # classification diff, so this topic classifies from body and frontmatter
+    # alone. Not a stub, not escalated, `drifted` unreachable (no diff, no
+    # validation), `scan` non-null so not `undercooked`, human_input 20 so not
+    # `unverified` — row 7, `current`. §1/§2 are skipped for it twice over,
+    # by the shallow gate and by the classification, and no judge here reads
+    # their output.
+    classification: current
+    scan: "aaaa1111bbbb2222cccc3333dddd4444eeee5555"
+    freshness: 70
+    human_input: 20
+    completeness: 65
+    inferred_sections:
+      - id: overview
+        heading: "## Overview"
+      - id: charging
+        heading: "## Charging"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/billing/"]
+    stale_flags: []
+  - name: notifications
+    title: Notifications
+    tier: mature
+    # Same shallow-gate reasoning, different frontmatter: human_input 0,
+    # freshness 85 (>= 40), question_passes absent (treated as 0, < 2), and
+    # `questions` is not false — Step 5 row 6, `unverified`.
+    classification: unverified
+    scan: "bbbb2222cccc3333dddd4444eeee5555ffff6666"
+    freshness: 85
+    human_input: 0
+    completeness: 50
+    inferred_sections:
+      - id: overview
+        heading: "## Overview"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/notify/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: true
+docs_dir: docs/agents

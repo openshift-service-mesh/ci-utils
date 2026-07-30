@@ -1,7 +1,0 @@
-workspace_description: "Python FastAPI ML inference service with scikit-learn"
-expected_languages:
-  - python
-expected_frameworks:
-  - fastapi
-  - scikit-learn
-expected_architecture: "ML inference service"

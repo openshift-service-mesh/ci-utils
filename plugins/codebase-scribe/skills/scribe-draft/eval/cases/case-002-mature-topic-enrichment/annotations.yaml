@@ -1,0 +1,23 @@
+docs_dir: docs/agents
+topic_name: backend-architecture
+mode: normal-draft
+was_stub: false
+expected_preserved_headings:
+  - Overview
+  - Components
+  - Gotchas
+  - Links
+expected_verbatim_preserved:
+  - "Route registration is centralized in `router.go` rather than per-package"
+expected_human_sections_include:
+  - gotchas
+check_human_input_exact: false
+expect_claims: true
+max_claims: 20
+forbidden_changelog_phrases:
+  - now supports
+  - was added
+  - previously
+  - formerly
+  - is now
+  - gained a

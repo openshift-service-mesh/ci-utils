@@ -1,0 +1,7 @@
+scenario: "changelog language — 'was updated', 'now supports', 'previously'"
+expected_verdict: REWORK_NEEDED
+expected_critical_tags:
+  - CONTRADICTION
+expected_evidence_contains:
+  - "now supports"
+expected_recommendation_kind: targeted

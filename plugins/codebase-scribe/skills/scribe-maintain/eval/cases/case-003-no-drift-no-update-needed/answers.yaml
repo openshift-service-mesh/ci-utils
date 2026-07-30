@@ -1,8 +1,0 @@
-# Approval guidance for scribe-maintain interactive prompts.
-# No section updates are expected. The inventory and AGENT.md are in sync.
-# scribe-maintain should detect no drift and exit without prompting for approvals.
-# If any update is unexpectedly proposed, the engineer declines it.
-
-approve_any_proposed_update: false
-# Reason: The AGENT.md accurately reflects the current codebase. The inventory matches the
-# source tree. No updates should be proposed or applied.

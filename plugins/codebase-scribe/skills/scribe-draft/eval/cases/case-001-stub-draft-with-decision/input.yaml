@@ -1,0 +1,25 @@
+batch:
+  - name: payments-integration
+    title: Payments Integration
+    tier: stub
+    scan: null
+    freshness: 0
+    human_input: 0
+    completeness: 0
+    inferred_sections: []
+    human_sections: []
+    decisions: []
+    question_passes: 0
+    watch_paths: ["internal/payments/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# mode/topic_name are eval-only convenience fields (not part of the real
+# orchestrator brief) — they exist so {{ arguments.mode }} / {{
+# arguments.topic_name }} resolve in the LLM judge prompt, which templates
+# from input.yaml, not annotations.yaml.
+mode: normal-draft
+topic_name: payments-integration

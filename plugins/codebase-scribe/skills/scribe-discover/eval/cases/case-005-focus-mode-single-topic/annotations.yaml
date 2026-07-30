@@ -1,0 +1,7 @@
+brief: input.yaml
+expected_docs_dir: docs/agents
+expected_created:
+  - notification-service
+expected_collisions: []
+forbidden_leakage_strings:
+  - PulsarNotifyWorker

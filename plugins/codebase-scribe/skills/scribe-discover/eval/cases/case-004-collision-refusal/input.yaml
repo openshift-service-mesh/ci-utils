@@ -1,0 +1,11 @@
+docs_dir: docs/agents
+topics:
+  - name: backend-architecture
+    title: Backend Architecture
+    watch_paths: ["cmd/", "internal/api/"]
+  - name: data-access
+    title: Data Access Layer
+    watch_paths: ["internal/store/"]
+  - name: build-deploy
+    title: Build & Deploy
+    watch_paths: ["deploy/", "Makefile"]

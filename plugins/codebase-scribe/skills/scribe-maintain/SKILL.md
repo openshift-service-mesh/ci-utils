@@ -5,62 +5,58 @@ description: Use when all documentation topics are current or lightly drifted. D
 
 # Scribe Maintain — Phase 3
 
-You are running Phase 3 (Maintain) of the codebase-scribe documentation system. Your job is to detect drift between documentation and code, auto-fix mechanical issues, flag major drift and decision drift for review, check cross-topic consistency, and recalculate scores. Semantic drift evaluation is handled by the review subagent (scribe-review).
+You are running Phase 3 (Maintain) of the codebase-scribe documentation system. Your job is to detect drift between documentation and code, auto-fix mechanical issues, flag major drift and decision drift for review, check cross-topic consistency, and recalculate scores. Semantic drift evaluation belongs to the review subagent (scribe-review).
+
+Shared definitions — **Repo root = cwd**, **scribe-lib**, **Threaded fields**, **Maturity test**, **No-HEAD rule**, **partial frontmatter updates** — live in `commands/codebase-scribe.md` § Definitions and apply here as written. **scribe-lib is a program you RUN, never a file you read:** `<python> <plugin-root>/scripts/scribe-lib.py <subcommand> ...` where `<python>` is the first working of `python3`/`python`/`py -3` and `<plugin-root>` is `$CLAUDE_PLUGIN_ROOT` when set, else this skill's own plugin directory (two levels up from this file). Every brief carries the Threaded fields: use the passed values, never re-derive them. The repo being maintained is ALWAYS the current working directory: every reference check and every frontmatter or STATUS.md write resolves against cwd — never against a plugin directory or any other project root visible in context.
 
 ## Safety Rules
 
-1. **Mechanical drift:** Auto-fix broken file paths and function names. Always produce a summary of what you changed.
-2. **Semantic drift:** Maintain does not evaluate semantic drift — that is handled by the review subagent (scribe-review). Maintain only flags major churn for review.
-3. **Deletions are always semantic:** If a referenced file or function was deleted, flag it — never silently remove the reference.
-4. Never modify AGENTS.md
-5. Never delete content from topic files — only update references and frontmatter
+1. **Mechanical drift:** auto-fix broken file paths and function names; always summarize what changed.
+2. **Semantic drift:** not evaluated here — maintain only flags major churn for review.
+3. **Deletions are always semantic:** a deleted referenced file or function is flagged, never silently removed.
+4. Never modify AGENTS.md.
+5. Never delete content from topic files — only update references and frontmatter.
+6. **Every frontmatter write here is a partial update** — §3 and §4 add stale flags, §5 demotes them, §8 rewrites scores, §9 sets `completeness: 0`; each changes only the keys its own section names. draft §10's preservation clause is the canonical list.
 
 ## Inputs
 
-You receive from the orchestrator:
-- List of all topics with their current frontmatter
-- Per-topic drift classification (current / drifted / undercooked)
-- List of topics with changed watch_paths (from Phase 0's git diff)
-
-Read `.scribe.yml` if it exists for drift sensitivity settings.
+From the orchestrator: all topics with current frontmatter; per-topic drift classification (one of Step 5's categories — only `current` scopes anything here, §§1–2; every other value behaves identically); topics with changed watch_paths; and the Threaded fields. Read `.scribe.yml` for drift sensitivity settings.
 
 ## Drift Sensitivity
 
-Map the `drift.sensitivity` setting to thresholds:
-- `low`: minor = 20% of watched files changed, major = 50%
-- `medium` (default): minor = 10%, major = 30%
-- `high`: minor = 5%, major = 15%
+`drift.sensitivity` → thresholds: `low`: minor = 20% of watched files changed, major = 50%; `medium` (default): 10% / 30%; `high`: 5% / 15%.
 
 ## Per-Topic Maintenance
 
-For each topic that isn't completely current:
+Run for **every** topic the orchestrator passed, including topics classified `current`. Drift classification scopes §§1–2 and nothing else — this is load-bearing: `All current` (Step 8 row 9) is the only normal route into this skill, so skipping current topics would make §7, §8, and §10 unreachable on every ordinary maintain run.
 
 ### 1. Scope the Diff
 
-Run: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`
+Skipped for a topic classified `current` (its watch_paths haven't changed since `scan`, so there is no churn to scope; §3 still validates its references). Skipped entirely when `shallow` is true. If scribe-lib `validate-sha` fails for `scan_sha`, report full churn without running the diff.
 
-Calculate churn: (files changed / total files in watch_paths) x 100
+Otherwise: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`; churn = (files changed / total files in watch_paths) × 100.
 
 ### 2. Apply Drift Table
+
+Skipped in a shallow clone and for `current` topics (no §1 input either way). `_meta.<topic>_extracted_at` needs no SHA guard — equality-only; mismatch → re-extract, the safe direction.
 
 | Watch paths changed? | References valid? | Action |
 |---|---|---|
 | No | Yes | **Skip.** Stable and correct. Zero prompts. |
-| No | No | Mechanical drift. Auto-fix if possible, flag deletions. |
-| Yes, minor (< minor threshold) | Yes | Light check. Skim the diff summary. Usually no action needed. |
-| Yes, minor | No | Mechanical drift. Auto-fix broken references. |
-| Yes, major (> major threshold) | Either | Major drift. Flag for review — semantic evaluation handled by review subagent. |
+| No | No | Mechanical drift: auto-fix if possible, flag deletions. |
+| Yes, minor (< minor threshold) | Yes | Light check: skim the diff summary; usually no action. |
+| Yes, minor | No | Mechanical drift: auto-fix broken references. |
+| Yes, major (> major threshold) | Either | Major drift: flag for review (semantic evaluation is the review subagent's). |
 
 ### 3. Reference Validation
 
-For each topic file, extract all file path references and function/type name references. Check:
-- **File paths:** Does `grep -r` or `ls` confirm the file exists?
-- **Function names:** Does `grep -r "func <name>" <watch_paths>` find the function?
+For each topic file, extract all file path and function/type name references. Check:
+- **File paths:** resolve first — a Markdown link destination (not a URL or bare `#anchor`) is relative to the topic file's directory (`<docs_dir>/<dest>`, `../` normalized); an inline path in backticks or prose is repository-relative. Then confirm the resolved path exists. Testing a link destination verbatim from the project root would auto-fix a correct link.
+- **Function names:** search the bare symbol (`grep -rn "<name>" <watch_paths>`), never a Go-shaped declaration pattern alone — this plugin documents many languages, and `export function <name>()` matches no `func <name>` pattern. A hit is not yet valid: confirm the name is a *declaration* in that file's own language, per the rule in `agents/scribe-review.md` Pass 1 check 2. Absent entirely, or present only at call sites → broken reference. Both halves matter: a false "missing" auto-fixes a working reference; a false "valid" quietly subtracts from §9's 60% ratio.
 
 For broken references:
-- Check `git log --diff-filter=R -- <old_path>` to find if the file was renamed
-- If renamed: auto-fix the reference in the doc, note the change in your summary
-- If deleted: add a stale flag to frontmatter:
+- If `shallow`: skip the rename check — renames are indistinguishable from deletions in a shallow clone. Report the broken reference without a deletion flag (no `reason: "deleted"`); §9's escalation is skipped for these references.
+- Otherwise `git log --diff-filter=R -- <old_path>`. Renamed → auto-fix the reference, add a stale flag with `reason: "renamed"` (draft's question-pass mode counts on that flag existing), note in summary. Deleted → add a stale flag:
 
 ```yaml
 stale_flags:
@@ -71,63 +67,43 @@ stale_flags:
     detail: "<specific explanation>"
 ```
 
-Reason categories: `"deleted"` (file/function removed), `"renamed"` (auto-fixed but flagged), `"semantic"` (code behavior changed), `"escalated"` (60%+ broken references, needs full redraft).
+Reasons: `"deleted"`, `"renamed"` (auto-fixed but flagged), `"semantic"`, `"escalated"` (60%+ broken references, needs full redraft).
 
 ### 4. Decision Drift Detection
 
-For claims in `.claims.yml` with `provenance.origin: user`, check whether the claim's `source` file changed since the claim was recorded:
+Skipped in a shallow clone. If a topic's `scan_sha` fails validation, skip this diff-derived branch for its decision entries rather than flagging them.
 
-1. Run `git diff --stat <scan_sha>..HEAD -- <source_file>` for each user-sourced claim
-2. If the source file changed by more than `drift.decision_lines_threshold` lines (default: 5, configurable in `.scribe.yml`), check the diff hunks for key terms from the claim text
-3. If both conditions are met (threshold exceeded AND claim terms appear in diff), the decision may be outdated
+For each frontmatter `decisions:` entry with `status: active` (no `status` = `active`):
 
-Add a stale flag:
+0. **Base selection (guarded stored-SHA consumer):** the diff base is the entry's `resolved_at` when it is present, passes scribe-lib `validate-sha`, AND is a descendant of `scan` (`git merge-base --is-ancestor <scan_sha> <resolved_at>` — an ancestry test, not a max comparison). Otherwise the base is `scan_sha`; a failing `resolved_at` is ignored — fail toward re-detection.
+1. `git diff --stat <base>..HEAD -- <source_file>`.
+2. Changed by more than `drift.decision_lines_threshold` lines (default 5)? Then check the diff hunks for key terms from the claim text.
+3. Both conditions met → the decision may be outdated; add a stale flag with `reason: "decision_drift"`, `id: decision-<claim-id>`, `heading: "<section where the claim appears>"`, `flagged_at_sha: <current HEAD>`, and a `detail` naming the claim, its recorded date, and the changed file.
 
-```yaml
-stale_flags:
-  - id: decision-<claim-id>
-    heading: "<section where the claim appears>"
-    flagged_at_sha: <current HEAD>
-    reason: "decision_drift"
-    detail: "Claim '<claim text>' (recorded <date>) may be outdated — <file> changed since it was recorded."
-```
+**Deduplication:** multiple active entries referencing the same changed file within one topic get ONE flag listing all affected claims in `detail`. **Retired entries are never re-flagged.**
 
-**Deduplication:** If multiple user-sourced claims reference the same changed file within one topic, create ONE stale flag per topic listing all affected claims in the `detail` field.
-
-**Claims missing `provenance`** or with `provenance.origin: inferred` are skipped entirely — decision drift only applies to user-sourced knowledge.
-
-Report in the summary: "N decision drift flag(s) raised. These will be addressed in the next draft or focus run."
+Summary line: "N decision drift flag(s) raised. These will be addressed in the next draft or focus run."
 
 ### 5. Stale Flag Lifecycle
 
-For existing stale flags in frontmatter:
-- Calculate commit distance: `git rev-list --count <flagged_at_sha>..HEAD`
-- Check if watch_paths have changed since the flag was raised: `git diff --stat <flagged_at_sha>..HEAD -- <watch_paths>`
-- **Demote to known stale** when: commit distance > `stale_commit_threshold` (default 50) AND watch_paths haven't changed in those commits
-- **Keep active** when: watch_paths are still changing (code is actively evolving, stale docs are a real problem)
-- Surface active flags to the user: "These sections may be outdated: [list]"
+Skipped in a shallow clone. If a flag's `flagged_at_sha` fails validation, leave the flag active without recalculating.
+
+For existing flags: commit distance = `git rev-list --count <flagged_at_sha>..HEAD`; watch-path churn since the flag = `git diff --stat <flagged_at_sha>..HEAD -- <watch_paths>`. **Demote to known stale** when distance > `stale_commit_threshold` (default 50) AND watch_paths unchanged in those commits. **Keep active** while watch_paths are still changing. Surface active flags: "These sections may be outdated: [list]".
 
 ### 6. Cross-Topic Consistency
 
-#### Reference Consistency
-When two topic files reference the same file path or function, check they describe it consistently (same purpose, same behavior). Flag inconsistencies.
+**Reference consistency:** when two topics reference the same file or function, check they describe it consistently; flag inconsistencies.
 
-#### Claim Consistency
-Read `docs/agents/.claims.yml`. For each topic:
-- Check if the topic has claims in `.claims.yml`. **If a topic has zero claims, extract them now** — this catches topics that were drafted by subagents or in earlier versions that didn't extract claims.
-- Check if the topic file's git SHA matches `_meta.<topic>_extracted_at`
-- If they differ (topic was updated), re-extract claims for that topic
-- If `.claims.yml` is missing, re-extract claims for all topics
+**Claim consistency:** read `.claims.yml`. Per topic: zero claims → extract them now (catches topics drafted before claim extraction existed). Topic file SHA differs from `_meta.<topic>_extracted_at` → re-extract. `.claims.yml` missing → re-extract all.
 
-Re-extraction: read the topic file content and extract up to 15-20 factual claims using the five claim types (technology, pattern, data_flow, boundary, constraint).
+**Re-extraction** (up to 15–20 claims, proportional, five types): read existing `.claims.yml` first; preserve IDs for claims matching by exact `{type, topic}` + first-50-chars; new IDs skip `_retired_ids` and every id in that topic's `decisions:` (active and retired) — unguarded, a reworded decision claim could orphan its id, maintain could hand it to a new claim, and a later re-link would duplicate it. Preserve existing `provenance` — never overwrite user provenance with inferred.
 
-**When re-extracting claims**, read existing `.claims.yml` first and preserve IDs for claims that match by exact match on `{type, topic}` and first 50 characters of the claim text. Only assign new IDs for genuinely new claims. Preserve `provenance` fields from existing claims — do not overwrite user-provided provenance with inferred.
+**Re-linking, by content:** each re-extracted claim that did NOT match by ID stability (and would get a fresh ID, losing provenance) is checked against the topic's `status: active` `decisions:` entries on `{type, topic, first-50-chars}`. On a match: restore the entry's provenance onto the claim, and the claim takes the entry's `id`. Uniqueness, both guards: **many-to-one** — only the claim first in `.claims.yml` document order binds; **one-to-many** — binds none, reported in §13. Accepted residual: a claim reworded past this content match becomes a plain new inferred claim, no further fallback. After re-linking, report `active` decisions that matched no claim ("unmatched active decisions").
 
-Claims missing a `provenance` field default to `{ origin: inferred }` for all purposes including drift detection.
+Claims missing `provenance` default to `{origin: inferred}`. Claims without an `id` get one on first read.
 
-For existing claims without an `id` field, assign IDs on first read using the `<topic-slug>-<N>` scheme.
+**Always run contradiction checking**, even with no re-extraction: compare ALL claims across ALL topics; contradictions go to `.claims.yml`:
 
-**Always run contradiction checking** even if no claims were re-extracted. Compare ALL claims across ALL topics. If two claims from different topics contradict each other, add to the `contradictions` section in `.claims.yml`:
 ```yaml
 contradictions:
   - topic_a: architecture
@@ -138,110 +114,54 @@ contradictions:
 
 ### 7. Quality Checks
 
-Run these on every maintain pass:
+On every maintain pass:
 
-**Structural validation:** Verify each topic file has these 5 `##` headings: `Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`. Also verify the TL;DR blockquote exists. If any are missing, flag for the user (do not auto-add — maintain never adds content).
+**Structural validation:** flag a missing TL;DR blockquote on any topic. On `stub`-tier topics (the brief's `tier`; fallback when absent: scribe-lib `tier`), additionally flag any missing skeleton section (`Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`). On mature topics, an advisory note for a missing `## Links`. Flag only — maintain never adds content.
 
-**Actionability check:** Scan each section. If a section is more than 5 lines of prose with zero code references (file paths, commands, function names), flag it:
-> "Section '[heading]' in [topic].md has no concrete code references. Consider enriching it with specific file paths and commands."
+**Actionability:** a section over 5 prose lines with zero code references → "Section '[heading]' in [topic].md has no concrete code references. Consider enriching it with specific file paths and commands."
 
-**Content length check:** If any topic file exceeds 500 lines (or `content.split_threshold`), propose a split.
+**Content length:** over 500 lines (or `content.split_threshold`) → propose a split.
 
-**Structural diff:** Compare the repo's top-level directory structure against documented topics. If a significant directory exists that isn't covered by any topic's watch_paths, note it:
-> "Directory `pkg/newmodule/` exists but isn't covered by any documentation topic. Consider running `/codebase-scribe` to add a topic for it."
+**Structural diff:** a significant top-level directory covered by no topic's watch_paths → "Directory `X` exists but isn't covered by any documentation topic. Consider running `/codebase-scribe` to add a topic for it."
 
 ### 8. Recalculate Scores
 
-For each topic:
+- **Freshness:** skip the recalculation (leave the stored value) when: shallow clone; `scan_sha` fails validation; or HEAD cannot be read (No-HEAD rule — a full clone with a valid `scan` still has nothing to diff against without git). Otherwise: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`; freshness = (unchanged files / total files in watch_paths) × 100; hold the prior value when watch_paths contain no files. Under `main-only` when `current_branch` != `default_branch`, do not update `freshness` or `scan`.
+- **Human Input:** scribe-lib `human-input` — not diff-derived; always runs.
+- **Completeness:** scribe-lib `completeness` — not diff-derived; always runs.
 
-**Freshness:** `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100.
-
-**Human Input:** (sections NOT in `inferred_sections` / total sections) x 100.
-
-**Completeness:** List depth-1 subdirectories of each watch_path. Completeness = (directories with at least one file referenced in the doc / total directories) x 100.
-
-Update scores in the topic file's frontmatter. Update `scan` SHA to current HEAD if changes were made.
+Update scores in frontmatter (freshness left at its prior value where skipped).
 
 ### 9. Escalation
 
-If a section has 60%+ of its referenced files no longer existing, escalate:
-> "Section '[heading]' in [topic].md has 60%+ broken references. This section needs a full redraft. Recommend running `/codebase-scribe` again to regenerate it."
+Subject to §3's shallow-clone exclusion: references reported without a deletion flag are not evaluated against this threshold — §3's bullet owns that rule.
 
-To ensure the orchestrator routes this topic to Phase 2 on the next run:
-1. Set `completeness: 0` in the topic's frontmatter (this triggers the `undercooked` classification in the orchestrator's Step 5)
-2. Add a stale flag with `reason: "escalated"`:
-```yaml
-stale_flags:
-  - id: <topic-slug>
-    heading: "# <topic title>"
-    flagged_at_sha: <current HEAD>
-    reason: "escalated"
-    detail: "60%+ broken references in section '[heading]', needs full redraft"
-```
-3. Update session state with `phase_status: "needs_redraft"` for this topic
+If a section has 60%+ of its referenced files no longer existing: "Section '[heading]' in [topic].md has 60%+ broken references. This section needs a full redraft. Recommend running `/codebase-scribe` again to regenerate it." Then, so the orchestrator routes the topic to Phase 2 next run:
+1. Set `completeness: 0` (paired with the flag below, this triggers Step 5's `escalated` row)
+2. Add a stale flag: `id: <topic-slug>`, `heading: "# <topic title>"`, `flagged_at_sha: <current HEAD>`, `reason: "escalated"`, `detail: "60%+ broken references in section '[heading]', needs full redraft"`
+3. Session state: `phase_status: "needs_redraft"`
 
 ### 10. Regenerate STATUS.md
 
-After all maintenance checks, regenerate `docs/agents/STATUS.md` (full overwrite):
-1. Read all topic files' frontmatter for current scores
-2. Read `.claims.yml` for claim counts and any contradictions
-3. Write STATUS.md with: topic table (Topic, Fresh, Human, Complete, Claims, File), stale flags section, contradictions section
+Full overwrite in docs_dir: topic table (Topic, Fresh, Human, Complete, Claims, File) from frontmatter, stale flags, contradictions (from `.claims.yml`), review notes.
 
 ### 11. Standard Files Maintenance
 
-After all topic maintenance is complete, check the three human-facing root files for drift. Run this block once per maintain invocation.
+Once per maintain invocation, after all topic maintenance: check `README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md` at the repo root. Missing → note in summary, do not create (creation is draft's).
 
-#### A. Check each standard file
+**README.md / CONTRIBUTING.md** — mechanical drift only, never rewrite prose:
+- **Broken links** to docs_dir files: renamed → auto-fix and note; deleted → flag.
+- **Stale commands:** a shown command no longer in the build files → flag for human review, never auto-fix (intent may have changed).
+- **Missing topic links:** new topic files not linked from README → note as candidates.
 
-For each of `README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md` at the repo root:
+**ARCHITECTURE.md** (pure navigation index): auto-fix renamed links, flag deleted; auto-add missing topics (TL;DR as description); refresh a description line whose topic TL;DR changed.
 
-1. Check if the file exists. If it doesn't, note it as missing in the summary — do not create it (creation belongs to draft mode).
-2. If it exists, read it.
-
-#### B. Per-file drift checks
-
-**README.md and CONTRIBUTING.md:**
-
-Check for mechanical drift only — do not rewrite prose:
-- **Broken links:** For every link to a `docs/agents/` file, check it resolves. If a linked topic file was renamed, auto-fix the link and note it. If it was deleted, flag it.
-- **Stale commands:** For any command shown (build, test, run), check it still appears in the build files (Makefile, package.json, etc.). If a command is no longer present, flag it for human review — do not auto-fix commands since the intent may have changed.
-- **Missing topic links:** If new topic files exist in `docs/agents/` that aren't linked from README.md, note them in the summary as candidates to add.
-
-**ARCHITECTURE.md:**
-
-Since this file is a pure navigation index, maintenance is straightforward:
-- For every `docs/agents/` link it contains, check it resolves. Auto-fix renamed files, flag deleted ones.
-- If new topic files exist in `docs/agents/` that aren't listed, auto-add them using the topic's blockquote TL;DR as the description.
-- If a topic's TL;DR blockquote changed since ARCHITECTURE.md was last written, update the description line.
-
-#### C. Report outcome
-
-Include in the Step 13 summary: which files were checked, what was auto-fixed, and what was flagged for human review.
+Report in the §13 summary: checked / auto-fixed / flagged.
 
 ### 12. Review Gate
 
-**After all maintenance checks, STATUS.md regeneration, and Standard Files Maintenance, you MUST run the review orchestration** for any topics that were modified (mechanical fixes, re-extracted claims, etc.). This is not optional.
-
-Follow Step 9 (Review Orchestration) from the orchestrator command (`commands/codebase-scribe.md`). For each topic modified during this maintain pass:
-
-1. Classify the change using the rules in Step 9a
-2. Check the review trigger (Step 9b)
-3. If triggered: invoke the `codebase-scribe:scribe-review` skill using the `Skill` tool (NOT the `Agent` tool, NOT code-reviewer or any other plugin) (Step 9c)
-4. Process the verdict (Step 9d), check human gate (Step 9e), finalize (Step 9f)
-5. If not triggered: present the opt-in prompt to the user
-
-Only after the review gate completes should you print the summary.
+**After all maintenance checks, STATUS.md regeneration, and Standard Files Maintenance:** follow Step 9 (Review Orchestration) in `commands/codebase-scribe.md` for every topic modified in this pass; only after it completes for all of them, print the §13 summary and return to the orchestrator.
 
 ### 13. Summary
 
-Print a summary:
-- Topics checked: N
-- Mechanical fixes applied: [list]
-- Major drift flags raised: [list]
-- Decision drift flags raised: [list]
-- Stale flags demoted: [list]
-- Contradictions found: [list]
-- Quality issues: [list]
-- Standard files: [auto-fixes applied] / [flags raised] / [missing files noted]
-- Review results: [pass/rework/skipped per topic]
-- Suggested next action
+Print every line below, every run — write `none` for an empty list rather than omitting the line (downstream tooling reads these entries by name): topics checked; mechanical fixes applied; major drift flags; decision drift flags; decision provenance (unmatched active decisions / ambiguous re-link matches); stale flags demoted; contradictions; quality issues; standard files (auto-fixes / flags / missing); review results per topic; suggested next action.

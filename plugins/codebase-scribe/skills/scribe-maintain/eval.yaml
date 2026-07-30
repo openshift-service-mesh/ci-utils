@@ -1,15 +1,26 @@
 name: codebase-scribe-eval
-description: Evaluate scribe-maintain for accurate AGENT.md update detection and selective refresh
+description: Evaluate scribe-maintain for scan-SHA validation, the shallow-clone gate, deletion flagging, escalation, and structural/actionability quality checks
 skill: codebase-scribe:scribe-maintain
 
 execution:
   mode: case
-  arguments: ""
+  # The orchestrator's maintain brief. An empty arguments string left the skill
+  # with no topics, no repo flags and no docs_dir to act on. JSON is used for
+  # the structured fields because it is unambiguous and valid YAML.
+  arguments: |
+    docs_dir: {{ input.docs_dir }}
+    default_branch: {{ input.default_branch }}
+    branching_strategy: {{ input.branching_strategy }}
+    current_branch: {{ input.current_branch }}
+    shallow: {{ input.shallow }}
+    topics: {{ input.topics | tojson }}
   timeout: 2400
   max_budget_usd: 8.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
@@ -18,7 +29,6 @@ models:
 
 permissions:
   allow:
-    - Skill
     - Read
     - Write
     - Edit
@@ -31,44 +41,78 @@ mlflow:
   experiment: codebase-scribe-eval
 
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-maintain/eval/cases
+  path: eval/cases
+  workspace:
+    # Each entry is a case-relative path copied verbatim, preserving its name.
+    # The source tree lives at the case root as internal/ (not under a src/
+    # container), because watch_paths and the topic files' own references name
+    # it at the repo root — under a nested container drift detection would see
+    # every referenced path as deleted. diff.txt is NOT listed: it is case
+    # metadata (prose about the case), not workspace content the skill reads.
+    # Every topic the skill updates in place comes back through stock's
+    # changed-files collection under a `_modified/` prefix, which the judges'
+    # path lookups tolerate; a topic the skill correctly leaves untouched (e.g.
+    # under the shallow-clone gate) is ABSENT, and its absence is the proof it
+    # was not modified — the judges below read absence as "unchanged", not "not
+    # found".
+    files:
+      - internal
+      - docs
+      - .scribe.yml
   schema: |
     Each case directory contains:
-    - input.yaml: YAML file with:
-      * change_type: type of code changes made (e.g., "new_component", "renamed_module",
-        "removed_feature", "new_dependency", "architecture_change")
-      * sections_expected_to_change: list of AGENT.md section names that should be updated
-      * sections_expected_unchanged: list of section names that should NOT be changed
-    - src/: current state of source code (with changes already applied)
-    - AGENT.md: existing AGENT.md that is now out of date relative to src/
-    - .claude/scribe/inventory.yaml: inventory from before the changes
-      (stale — scribe-maintain re-runs discover and detects drift)
-    - diff.txt: optional git diff showing what changed (for context)
-    - answers.yaml: responses to approval prompts
-      (confirm or decline each proposed section update)
-    - annotations.yaml:
-      * expected_sections_updated: sections that should be updated
-      * expected_sections_preserved: sections that must not be modified
-      * expected_no_update: boolean — if true, no changes expected (doc already current)
-
-inputs:
-  tools:
-    - match: AskUserQuestion (scribe-maintain asks for approval of each detected section update before applying)
-      prompt: |
-        Use answers.yaml to respond to approval requests.
-        If asked to approve updating a section in expected_sections_updated, answer "yes/approve".
-        If asked about a section in expected_sections_preserved, answer "no/decline".
-        Default to "approve" for any section not explicitly listed.
+    - input.yaml: the orchestrator brief scribe-maintain receives — YAML with:
+      * topics: list of topics with their current frontmatter (scan, freshness,
+        human_input, completeness, inferred_sections, human_sections, decisions,
+        watch_paths, stale_flags), their drift `classification` — derived per
+        Step 5's rows from that topic's own seeded state, written out beside
+        each value; only `current` scopes anything in the skill (§§1–2), so
+        most cases seed rows the orchestrator would route to draft instead
+        (see eval.md's orchestrator-realizability section) — and
+        `tier: stub|mature` — the orchestrator's Step 5 maturity test, threaded
+        per-topic and never re-derived by the skill (§7's structural validation
+        branches on it, with body-shape detection only as the no-tier fallback)
+      * default_branch, branching_strategy, current_branch, shallow, docs_dir —
+        threaded orchestrator state, never re-detected by the skill — `shallow`
+        is a plain boolean the skill trusts directly, exactly like `docs_dir`;
+        no case needs a literal `.git/shallow` file to exercise the gate
+    - <docs_dir>/<name>.md: the topic file(s) on disk, matching input.yaml's frontmatter
+    - <docs_dir>/.claims.yml: claims and any decisions the topics reference
+    - internal/: current source tree, at the case root. No case in this suite
+      requires the harness to provision a specific, content-derived commit SHA
+      (which it cannot: a
+      SHA is a hash of its content, not something a fixture can name in
+      advance) — case-001's `scan` deliberately fails the shape test itself,
+      case-002 sets `shallow: true` so scan is never even inspected, and
+      cases 003-006 use `scan: null` because none of §3's plain existence
+      check, §7's textual quality checks, or §9's escalation rule depend on a
+      resolved git diff in the first place
+    - diff.txt: case metadata (NOT provisioned into the workspace) — prose
+      explaining what this case tests and, for cases whose name might suggest a
+      git dependency, why it deliberately does not have one
+    - .scribe.yml: fixture config, identical in every case — `review.enabled:
+      false`, so the Review Gate (which dispatches an agent this suite's
+      permission allowlist does not grant) is skipped and the run terminates at
+      the skill's own boundary. See eval.md's Deliberately Uncovered list
+    - annotations.yaml: the answer key — expected-outcome fields consumed by
+      the judges below, plus `scenario` (one line naming what this case seeds,
+      for the LLM judge's prompt). Never passed to the skill under test, so no
+      field naming a seeded defect or an expected outcome belongs in input.yaml:
+      judges that need one template it as {{ outputs.annotations.<field> }},
+      never {{ arguments.<field> }}. The rule is scoped to the answer key —
+      ordinary brief-derived context the skill is meant to see may be templated
+      from {{ arguments.<field> }}
 
 outputs:
   - path: output
     schema: |
-      Updated AGENT.md written in-place at project root.
-      Use outputs["modified_files"] to access updated content.
-      If no_update expected, AGENT.md should remain unchanged (not in modified_files).
-      If sections updated, modified AGENT.md contains updated sections
-      while approved-unchanged sections are preserved character-for-character.
-      Also may update .claude/scribe/inventory.yaml with fresh discovery results.
+      Topic files updated in place at <docs_dir>/<name>.md, <docs_dir>/.claims.yml
+      updated, and <docs_dir>/STATUS.md regenerated. Use outputs["files"] for the
+      full working tree after the run, and {{ conversation }} for the Step 13
+      summary judges rely on for behavior that isn't observable from frontmatter
+      alone (e.g. "warn once" under a shallow clone). `quality_checks_flagged`
+      reads only one labelled entry of that summary — "Quality issues" — never
+      the surrounding transcript.
 
 traces:
   stdout: true
@@ -82,116 +126,457 @@ judges:
     arguments:
       max_cost_usd: 7.0
 
-  - name: correct_sections_updated
+  - name: scan_validation_handling
     description: |
-      Verifies that sections marked as expected_sections_updated were modified,
-      and sections in expected_sections_preserved were not changed.
+      §2 scan-SHA validation. A scan value that fails the shape test
+      (^[0-9a-f]{7,40}$) must not be used to drive a diff-based recalculation —
+      §1 reports full churn without running the diff, and §8 leaves the
+      topic's freshness at its prior value rather than recomputing it.
+    check: |
+      import yaml, re
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("invalid_scan_topic")
+      if not topic:
+          return (True, "No invalid-scan scenario in this case")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      if not key:
+          # Stock collection surfaces a workspace file only when the skill
+          # changed it, so an untouched topic is ABSENT — and that absence proves
+          # its freshness stayed at the prior value, which is exactly what this
+          # judge asserts. A run that wrongly drove a diff-based recompute would
+          # have rewritten the file's freshness, so the file would be present and
+          # fall to the field check below.
+          return (True, f"{topic}.md is absent from the changed set (untouched), so its invalid scan drove no freshness recompute")
+      fm = yaml.safe_load(re.search(r'^---\n(.*?)\n---', files[key], re.DOTALL).group(1))
+      scribe = fm.get("scribe", fm)
+      expected_freshness = annotations.get("expected_freshness_unchanged")
+      if expected_freshness is not None and scribe.get("freshness") != expected_freshness:
+          return (False, f"freshness={scribe.get('freshness')} was recomputed despite invalid scan (expected unchanged {expected_freshness})")
+      return (True, "Invalid scan_sha did not drive a diff-based freshness recompute")
+
+  - name: shallow_gate_respected
+    description: |
+      §2 shallow-clone gate. Under a shallow clone, every stored-SHA-diff
+      consumer (§1/§2 churn, §3 rename resolution, §4 decision drift, §5 stale
+      flag lifecycle, §8 freshness recompute) is skipped; frontmatter is not
+      degraded, and a warning is issued once. §6 (cross-topic consistency), §7
+      (quality checks), and §9-12 still run.
+    check: |
+      import yaml, re
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      if not annotations.get("is_shallow_case"):
+          return (True, "Not a shallow-clone case")
+      problems = []
+      for topic, expected_freshness in (annotations.get("expected_freshness_unchanged_by_topic") or {}).items():
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+          if not key:
+              # Under stock collection an untouched topic is ABSENT from the
+              # changed set — and that absence is the proof its freshness is
+              # unchanged (the assertion here). A run that degraded freshness
+              # under the gate would have rewritten the file, so it would be
+              # present and fail the field check below.
+              continue
+          fm = yaml.safe_load(re.search(r'^---\n(.*?)\n---', files[key], re.DOTALL).group(1))
+          scribe = fm.get("scribe", fm)
+          if scribe.get("freshness") != expected_freshness:
+              problems.append(f"{topic}: freshness={scribe.get('freshness')}, expected unchanged {expected_freshness} under shallow clone")
+      conversation = outputs.get("conversation", "")
+      if annotations.get("expect_shallow_warning", True):
+          # The contract is "warn ONCE" (orchestrator Step 3, and this skill's
+          # §1/§2 gates), and the regression it guards against is a warning
+          # re-emitted per topic. Searching for the bare word `shallow` could
+          # not see that: one warning and five warnings matched identically.
+          # Count warning-shaped occurrences instead — a warning marker within
+          # 80 characters of the word on the same line — which separates an
+          # emitted warning from narration that merely mentions a shallow clone.
+          # Known limit, in this suite's tradition of stating them: a run that
+          # narrates "I will warn about the shallow clone" and then warns counts
+          # two. That is a lint on the run's prose, not a false theory about the
+          # gate, and it is the price of being able to fail on repetition at all.
+          emitted = re.findall(
+              r'(?i)(?:warning|warn|⚠)[^\n]{0,80}?\bshallow\b|\bshallow\b[^\n]{0,80}?(?:warning|warn|⚠)',
+              conversation)
+          if not emitted:
+              problems.append("No shallow-clone warning found in the run's output/summary (expected a warning marker naming 'shallow')")
+          elif len(emitted) != 1:
+              problems.append(f"{len(emitted)} shallow-clone warnings emitted, but the gate warns exactly once: {emitted}")
+      if annotations.get("expected_broken_ref_not_flagged_deleted"):
+          for topic, ref in annotations["expected_broken_ref_not_flagged_deleted"].items():
+              key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+              content = files.get(key, "") if key else ""
+              # Both YAML spellings, mirroring the sibling test in
+              # drift_table_and_mechanical_fixes — the quoted-only form let a
+              # valid unquoted `reason: deleted` pass the negative silently.
+              if ('reason: "deleted"' in content or "reason: deleted" in content) and ref in content:
+                  problems.append(f"{topic}: broken reference '{ref}' was flagged 'deleted' despite shallow clone (renames indistinguishable from deletions)")
+      # §9 escalation is downstream of §3's rename resolution, which the gate
+      # skips — so a section whose references are 100% broken must NOT be
+      # escalated under a shallow clone. This is the suite's sharpest shallow
+      # discriminator: an implementation that ignored the gate would escalate
+      # here, and nothing else in the case would notice.
+      if annotations.get("expect_no_escalation"):
+          escalation_topics = list((annotations.get("expected_freshness_unchanged_by_topic") or {}).keys())
+          if not escalation_topics:
+              problems.append("expect_no_escalation is set but this case names no topics to check it against — the assertion would be a silent no-op")
+          for topic in escalation_topics:
+              key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+              if not key:
+                  # Absent ⇒ untouched ⇒ no escalated stale_flag was added
+                  # (escalation writes completeness:0 and an "escalated" flag,
+                  # which would rewrite the file). That is exactly the
+                  # no-escalation outcome this gate requires, so absence passes.
+                  continue
+              fm_match = re.search(r'^---\n(.*?)\n---', files[key], re.DOTALL)
+              if not fm_match:
+                  problems.append(f"No frontmatter in {topic}.md — cannot check the no-escalation assertion")
+                  continue
+              fm = yaml.safe_load(fm_match.group(1)) or {}
+              scribe = fm.get("scribe", fm) or {}
+              if any(f.get("reason") == "escalated" for f in (scribe.get("stale_flags") or [])):
+                  problems.append(f"{topic}: escalated (reason: 'escalated' stale_flag present) despite the shallow-clone gate — §9 escalation is downstream of §3's rename resolution, which the gate skips, so a 100%-broken-reference section must be reported without escalating")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, "Shallow-clone gate respected")
+
+  - name: drift_table_and_mechanical_fixes
+    description: |
+      §3 Reference Validation's deletion path. A referenced file/function that
+      is genuinely absent from the current source tree gets a stale_flag with
+      reason "deleted" — never silently removed from the topic's prose (Safety
+      Rule 3). This suite does NOT assert rename auto-fixing or a real
+      churn-threshold-driven major-drift flag: both require a resolvable git
+      history no static fixture can provision (see eval.md's Deliberately
+      Uncovered section).
+    check: |
+      import yaml, re
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("drift_topic")
+      if not topic:
+          return (True, "No deletion-flagging scenario in this case")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      if not key:
+          return (False, f"{topic}.md not found in output")
+      content = files[key]
+      problems = []
+      for deleted_ref in annotations.get("expected_deleted_refs_flagged", []):
+          if f'reason: "deleted"' not in content and "reason: deleted" not in content:
+              problems.append(f"No stale_flag with reason 'deleted' for '{deleted_ref}'")
+      # Safety Rule 3 is about the topic BODY. Searching the whole file would
+      # let a run that deleted the prose pass on the strength of its own stale
+      # flag's `detail:` string, which normally names the very file that went
+      # missing — so strip the frontmatter before looking.
+      body_match = re.search(r'^---\n.*?\n---\n(.*)$', content, re.DOTALL)
+      body = body_match.group(1) if body_match else content
+      for preserved_ref in annotations.get("expected_reference_preserved_in_body", []):
+          if preserved_ref not in body:
+              problems.append(f"Reference to '{preserved_ref}' was removed from the topic body — Safety Rule 3 requires flagging, not deleting, prose")
+      # Frontmatter-derived assertions. Each is gated on its own annotation
+      # key, not on a sibling's, so adding one to another case can never be a
+      # silent no-op.
+      fm_match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL)
+      scribe = {}
+      if fm_match:
+          fm = yaml.safe_load(fm_match.group(1)) or {}
+          scribe = fm.get("scribe", fm) or {}
+      elif annotations.get("expect_no_escalation") or annotations.get("expected_completeness_recalculated") is not None:
+          problems.append(f"No frontmatter found in {topic}.md — cannot check the escalation/completeness assertions this case makes")
+      if annotations.get("expect_no_escalation"):
+          stale_flags = scribe.get("stale_flags", []) or []
+          if any(f.get("reason") == "escalated" for f in stale_flags):
+              problems.append("Topic was escalated (reason: 'escalated' stale_flag present) — this case's broken-reference ratio (50%) is deliberately below §9's 60% threshold to isolate the deletion path; escalation here means the threshold wasn't respected")
+      # §8 recalculates completeness on every pass unconditionally, and the
+      # fixture's watch_paths has exactly two depth-1 subdirectories, one of
+      # them cited in the doc — so the formula determines a single value
+      # (1/2 x 100 = 50). See the case's annotations.yaml for the derivation,
+      # and eval.md for why the subdirectories are load-bearing.
+      expected_completeness = annotations.get("expected_completeness_recalculated")
+      if expected_completeness is not None and fm_match and scribe.get("completeness") != expected_completeness:
+          problems.append(f"completeness={scribe.get('completeness')}, expected {expected_completeness} — §8's formula over this topic's watch_paths (1 of 2 depth-1 subdirectories has a file referenced in the doc); 0 would additionally mean §9 escalation fired despite the 50% ratio, and the prior value would mean §8 was skipped")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, "Deletion flagged and prose preserved, per Safety Rule 3, without incidentally escalating")
+
+  - name: escalation_flagged
+    description: |
+      §9 Escalation. A section with 60%+ of its referenced files no longer
+      existing gets completeness set to 0 and a stale_flag with
+      reason "escalated", recommending a full redraft. Driven entirely by §3's
+      plain existence check (ls/grep) — does not depend on scan resolving to
+      a real commit, so it is fully reachable without git history.
+    check: |
+      import yaml, re
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      topic = annotations.get("escalation_topic")
+      if not topic:
+          return (True, "No escalation scenario in this case")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      if not key:
+          return (False, f"{topic}.md not found in output")
+      content = files[key]
+      fm_match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL)
+      if not fm_match:
+          return (False, "No frontmatter found")
+      fm = yaml.safe_load(fm_match.group(1))
+      scribe = fm.get("scribe", fm)
+      problems = []
+      if annotations.get("expected_completeness") is not None and scribe.get("completeness") != annotations["expected_completeness"]:
+          problems.append(f"completeness={scribe.get('completeness')}, expected {annotations['expected_completeness']} after escalation")
+      if annotations.get("expected_escalated_stale_flag"):
+          stale_flags = scribe.get("stale_flags", []) or []
+          has_escalated = any(f.get("reason") == "escalated" for f in stale_flags)
+          if not has_escalated:
+              problems.append(f"No stale_flag with reason 'escalated' found (got {stale_flags})")
+      conversation = outputs.get("conversation", "")
+      if not re.search(r'escalat|full redraft|60%', conversation, re.IGNORECASE):
+          problems.append("No escalation/full-redraft language found in the run's summary")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, "Escalation correctly flagged for the 60%+ broken-reference section")
+
+  - name: quality_checks_flagged
+    description: |
+      §7 Quality Checks, read from two places and nowhere else: the topic file
+      on disk, and the "Quality issues" entry of the run's §13 summary — the
+      run's own findings list. Planning narration, tool chatter and the other
+      summary entries are outside the judge's window by construction.
+
+      §7 is carried by two cases, one per tier, and that split is the
+      mechanism rather than housekeeping. case-005 holds a stub whose only
+      seeded gap is a missing `Links` skeleton section, and asserts the gap is
+      reported and never auto-added. case-006 holds a mature topic, asserts
+      the two findings it seeds (missing TL;DR blockquote; a section with more
+      than 5 lines of prose and no code references), and carries the negative
+      that separates the post-wave-1 two-tier architecture from the
+      pre-improvement one: the 5-section skeleton is stub-only, so with no stub
+      in that case no skeleton heading may be named in the findings at all.
+      Because that case seeds no missing-skeleton finding, there is nothing for
+      a present-section enumeration ("missing `Links` — Key Entry Points, … are
+      there") to hang off, and the negative can be plain containment: no
+      keyword vocabulary, no adjacency rule, no ordering, no concession
+      carve-outs.
+
+      This replaces a keyword-to-heading adjacency matcher run over the whole
+      conversation, which was frozen after five rounds that each traded one
+      error family for another. Both of its documented failures are structural
+      here rather than filtered: a run that flags nothing can no longer pass
+      off its own preamble, because the preamble is not in the window; and a
+      finding phrased heading-first ("Gotchas — no concrete code references")
+      can no longer bind backwards onto a keyword, because no binding rule
+      remains. eval.md states what the new mechanism cannot see.
     check: |
       import re
-      modified = outputs.get("modified_files", {})
-      annotations = outputs.get("annotations", {})
-      expected_updated = annotations.get("expected_sections_updated", [])
-      expected_unchanged = annotations.get("expected_sections_preserved", [])
-      expected_no_update = annotations.get("expected_no_update", False)
-      agent_md_key = next((k for k in modified if k.endswith("AGENT.md")), None)
-      if expected_no_update:
-          if agent_md_key:
-              return (False, "AGENT.md was modified but expected_no_update=true")
-          return (True, "AGENT.md correctly not modified (already up to date)")
-      if not agent_md_key and expected_updated:
-          return (False, f"AGENT.md not modified but expected sections to update: {expected_updated}")
-      if not agent_md_key:
-          return (True, "No modifications — no expected sections to update")
-      # Check that preserved sections exist in output (not deleted or corrupted)
-      content = modified[agent_md_key]
-      for section in expected_unchanged:
-          if section.lower() not in content.lower():
-              return (False, f"Section '{section}' missing from updated AGENT.md (was it deleted?)")
-      return (True, f"Section changes verified: updated={expected_updated}, preserved={expected_unchanged}")
 
-  - name: no_unauthorized_edits
-    description: |
-      Verifies that scribe-maintain did not edit sections that the user declined to update.
-      Declined sections must be byte-identical to the input AGENT.md.
-    check: |
-      annotations = outputs.get("annotations", {})
-      modified = outputs.get("modified_files", {})
-      agent_md_key = next((k for k in modified if k.endswith("AGENT.md")), None)
-      if not agent_md_key:
-          return (True, "AGENT.md not modified — no unauthorized edits possible")
-      expected_no_update = annotations.get("expected_no_update", False)
-      if expected_no_update:
-          return (False, f"AGENT.md was modified despite expected_no_update=true")
-      preserved = annotations.get("expected_sections_preserved", [])
-      if not preserved:
-          return (True, "No sections marked for preservation — skipping check")
-      conversation = outputs.get("conversation", "")
-      declined_approved_count = conversation.lower().count("declined")
-      if declined_approved_count == 0 and preserved:
-          return (0.5, "No 'declined' in conversation but sections marked for preservation — verify manually")
-      return (True, f"Decline tracking confirmed; {declined_approved_count} section updates declined in conversation")
-
-  - name: approval_workflow_used
-    description: |
-      Verifies that scribe-maintain used an approval workflow (AskUserQuestion) before
-      applying each section update, rather than silently modifying the document.
-    check: |
-      import re
-      conversation = outputs.get("conversation", "")
-      modified = outputs.get("modified_files", {})
-      agent_md_key = next((k for k in modified if k.endswith("AGENT.md")), None)
-      if not agent_md_key:
-          return (True, "No AGENT.md modified — no approval workflow needed")
-      update_prompts = re.findall(
-          r'(update|refresh|change|revise|regenerate)[^\n]{0,50}(section|architecture|overview|guide)',
-          conversation, re.IGNORECASE
+      # §13 prescribes this label set for the summary. They are the only
+      # anchors this judge uses to find, and to bound, the findings list.
+      SUMMARY_LABELS = (
+          "Topics checked", "Mechanical fixes applied", "Major drift flags raised",
+          "Decision drift flags raised", "Decision provenance", "Stale flags demoted",
+          "Contradictions found", "Quality issues", "Standard files",
+          "Review results", "Suggested next action",
       )
-      if not update_prompts:
-          return (0.5, "No approval prompts detected in conversation — may have modified without asking")
-      return (True, f"Approval workflow used: {len(update_prompts)} update questions in conversation")
 
-  - name: maintenance_quality
+      def summary_label(line):
+          # (label, remainder) for a §13 summary entry in whatever markup the
+          # run wrapped it in — bullet, numbered item, table row, blockquote,
+          # bold, or an ATX heading — else (None, "").
+          s = line.strip()
+          s = re.sub(r'^(?:>\s*)+', '', s)
+          s = re.sub(r'^#{1,6}\s+', '', s)
+          s = re.sub(r'^(?:[-*+]\s+|\d+[.)]\s+|\|\s*)', '', s)
+          s = s.replace('**', '').replace('__', '').replace('`', '').strip()
+          for label in SUMMARY_LABELS:
+              if s[:len(label)].lower() == label.lower():
+                  rest = s[len(label):].lstrip()
+                  if rest[:1] in (':', '|'):
+                      return label, rest[1:]
+                  if rest == '':
+                      return label, ''
+          return None, ''
+
+      def quality_issues_entry(conversation):
+          # The LAST "Quality issues" label in the run's output, plus the block
+          # it owns. Taking the last one is what keeps a planning line
+          # ("Quality issues I will look for: …") out of the window: §13's
+          # summary is printed at the end, after all the narration.
+          #
+          # Extent is plain Markdown block structure, not a heuristic. When the
+          # label is a list item or table row, the entry is its inline
+          # remainder plus the lines indented under it — the next line at the
+          # same indent, whatever it says, is a sibling and ends the entry.
+          # When the label is a heading, the entry runs to the next heading.
+          # Either way the next §13 label ends it too.
+          lines = conversation.splitlines()
+          start = None
+          for i, line in enumerate(lines):
+              if summary_label(line)[0] == "Quality issues":
+                  start = i
+          if start is None:
+              return None
+          head = lines[start]
+          head_is_heading = bool(re.match(r'^\s*#{1,6}\s', head))
+          head_indent = len(head) - len(head.lstrip())
+          entry = [summary_label(head)[1]]
+          for line in lines[start + 1:]:
+              if not line.strip():
+                  entry.append(line)
+                  continue
+              if re.match(r'^\s*#{1,6}\s', line) or summary_label(line)[0] is not None:
+                  break
+              if not head_is_heading and (len(line) - len(line.lstrip())) <= head_indent:
+                  break
+              entry.append(line)
+          return "\n".join(entry)
+
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("docs_dir", "docs/agents")
+      spec = annotations.get("quality_checks")
+      if not spec:
+          return (True, "No quality-check scenario in this case")
+
+      topic = spec.get("topic")
+      key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{topic}.md")), None)
+      problems = []
+      premise = spec.get("fixture_premise") or {}
+
+      # Stock collection surfaces a workspace file only when the skill changed
+      # it. §7 REPORTS quality gaps and never fixes them — it never auto-adds a
+      # skeleton section or a TL;DR blockquote — so a topic maintain correctly
+      # touched nothing in is ABSENT from the changed set. That absence is itself
+      # the proof of the premise's "never auto-added" half (must_not_have_*) and
+      # that nothing was removed from must_have_*. The fixture-integrity half of
+      # must_have_* — did the fixture ship the section at all? — is a self-check
+      # on the fixture rather than on the run, and cannot be re-read from an
+      # absent file, so under absence it is left to fixture review. The §7
+      # assertion this case actually turns on — that the seeded gap was REPORTED
+      # in the §13 "Quality issues" summary — is read from the conversation below
+      # and gates fully whether or not the topic was written, so absence here is
+      # not a vacuous pass.
+      body = None
+      if key is not None:
+          body = re.sub(r'\A---\n.*?\n---\n', '', files[key], flags=re.DOTALL)
+
+      def has_heading(name):
+          return bool(body is not None and re.search(rf'^#{{1,6}}\s+{re.escape(name)}\s*$', body, re.MULTILINE))
+
+      # Fixture premise and §7's "never auto-add" rule are the same check read
+      # two ways: maintain never adds content, so a heading that is present in
+      # the OUTPUT was either always in the fixture or was added by the run.
+      # Under the previous judge, editing a heading out of the fixture silently
+      # voided the assertion built on it; here every anchor is named. These
+      # premise checks run only when the topic is present in the changed set;
+      # when it is absent (untouched), the "never auto-add / never remove"
+      # obligations they encode are satisfied by the absence itself.
+      if body is not None:
+          for name in premise.get("must_have_headings", []) or []:
+              if not has_heading(name):
+                  problems.append(f"FIXTURE PREMISE BROKEN: {topic}.md has no '{name}' heading in the output, and this case's assertions are derived from it being there")
+          for name in premise.get("must_not_have_headings", []) or []:
+              if has_heading(name):
+                  problems.append(f"{topic}.md has a '{name}' heading in the output — either maintain added it (§7 flags a missing section, it never auto-adds one) or the fixture drifted and this case no longer seeds what it claims to")
+          has_blockquote = bool(re.search(r'^\s*>', body, re.MULTILINE))
+          if premise.get("must_have_tldr_blockquote") and not has_blockquote:
+              problems.append(f"FIXTURE PREMISE BROKEN: {topic}.md has no TL;DR blockquote in the output — this case is built on the blockquote being present, so a missing-TL;DR finding would now be legitimate here and the case's finding shape no longer holds")
+          if premise.get("must_not_have_tldr_blockquote") and has_blockquote:
+              problems.append(f"{topic}.md has a TL;DR blockquote in the output — either maintain added one (§7 flags a missing TL;DR, it never auto-adds one) or the fixture drifted and this case's missing-TL;DR assertion no longer holds")
+
+      entry = quality_issues_entry(outputs.get("conversation", ""))
+      if entry is None:
+          problems.append("The run printed no 'Quality issues' entry — §13's summary prescribes one, and every §7 assertion in this case is read from it")
+      else:
+          shown = " ".join(entry.split())[:400] or "(empty)"
+          haystack = entry.lower()
+          # Positives: case-insensitive containment of an anchor unique to the
+          # seeded finding. Each case names exactly one topic, so a finding in
+          # this list is a finding about that topic — no attribution needed.
+          for wanted in spec.get("expect_reported", []) or []:
+              alts = wanted.get("any_of") or []
+              if not any(a.lower() in haystack for a in alts):
+                  problems.append(f"{topic}: {wanted.get('label')} was not reported — none of {alts} appears in the §13 'Quality issues' entry, which read: {shown!r}")
+          # Negative: containment, case-sensitive on the heading's own
+          # capitalization. Nothing in this case may legitimately name these
+          # headings in a quality finding.
+          for name in spec.get("expect_absent", []) or []:
+              if re.search(rf'\b{re.escape(name)}\b', entry):
+                  problems.append(f"{topic}: the quality findings name '{name}' — the 5-section skeleton is stub-only post-wave-1 and this case seeds no stub, so no finding here may name a skeleton heading. This is the pre-improvement behavior the case exists to rule out. Entry read: {shown!r}")
+
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, f"§13's 'Quality issues' entry reports the findings this case seeds for {topic}, names none it must not, and no flagged gap was auto-added")
+
+  - name: maintain_quality
     description: |
-      LLM evaluates whether scribe-maintain correctly identified what needed updating,
-      asked meaningful questions, and produced accurate updated content.
+      LLM evaluates overall correctness of the maintain run against the §2
+      validation/shallow contracts, §3's deletion-flagging duty, §7's quality
+      checks, and §9's escalation rule, for this case's scenario. This suite
+      does not exercise real churn-threshold drift rows, rename resolution, or
+      §4 decision drift — all three require resolvable git history no static
+      fixture can provision (see eval.md's Deliberately Uncovered section) —
+      so this prompt does not ask the judge to assess them.
     prompt: |
-      Evaluate the quality of this scribe-maintain operation.
+      Evaluate this scribe-maintain run.
 
-      Original change type: {{ arguments.change_type }}
-      Expected sections to update: {{ arguments.sections_expected_to_change }}
+      Scenario: {{ outputs.annotations.scenario }}
 
-      Conversation and outputs:
+      Transcript and outputs:
       {{ conversation }}
 
-      Updated AGENT.md content (if any):
       {{ outputs }}
 
       Assess:
-      1. Did scribe-maintain correctly detect that {{ arguments.change_type }} required doc updates?
-      2. Were approval questions specific to the actual changes (not generic "update everything")?
-      3. Are updated sections accurate to the current code state (not recycled from before)?
-      4. Were preserved sections left untouched (character-level preservation)?
-      5. Was the inventory also refreshed to match the current code state?
+      1. If a scan_sha was invalid or the clone was shallow, did maintain avoid
+         a diff-based recompute for the affected topic(s) rather than crashing
+         or silently guessing?
+      2. Were genuinely deleted references flagged (never silently dropped from
+         the topic's prose)?
+      3. Was a section with 60%+ broken references correctly escalated
+         (completeness reset, stale_flag with reason "escalated", full redraft
+         recommended) — and not over- or under-triggered?
+      4. Were structural issues (missing TL;DR, a stub missing a skeleton
+         section) and thin/inactionable sections correctly flagged rather than
+         silently fixed or ignored?
+      5. Does the Step 13 summary accurately reflect what was checked, fixed,
+         and flagged?
 
       Score 1-5:
-      1: Missed the change or rewrote sections that didn't need updating
-      2: Detected the change but approval questions vague or section selection wrong
-      3: Correct detection and approval flow but some sections inaccurate
-      4: Good maintenance: correct detection, clear questions, accurate updates
-      5: Excellent: precise detection, specific questions, accurate updates, preserved unchanged
-
-    arguments:
-      change_type: "{{ arguments.change_type }}"
-      sections_expected_to_change: "{{ arguments.sections_expected_to_change }}"
+      1: Crashed on bad scan_sha, silently dropped content, or missed escalation entirely
+      2: Mostly correct but missed a quality-check flag or under-reported in the summary
+      3: Correct core behavior but summary is inaccurate or incomplete
+      4: Solid run with a minor gap
+      5: Fully matches the contract for this scenario
 
 thresholds:
+# This suite has 6 cases (the other three have 5), so any min_pass_rate above
+# 0.833 already requires 6/6: anything between there and 1.0 is arithmetically
+# identical to 1.0 and would only read as tolerance for one flaky case. Stated
+# as 1.0 honestly rather than lowered — several cases turn on a single
+# deliberately-constructed discriminating assertion, and admitting one failure
+# would let exactly those regress silently.
+# Two judges run at an accepted-baseline threshold (owner decision, 2026-07-29,
+# after the first executed runs of this suite): the model reliably performs the
+# gated behaviors but drops summary/reporting lines — the shallow-clone warning
+# (three reproductions) and single items from the §13 quality-issues entry.
+# 0.83 = the measured 5-of-6 baseline; any NEW failure still trips it. Returns
+# to 1.0 with the planned scribe-lib frontmatter/reporting enforcement wave.
   budget_check:
     min_pass_rate: 1.0
-  correct_sections_updated:
-    min_pass_rate: 0.9
-  no_unauthorized_edits:
-    min_pass_rate: 0.95
-  approval_workflow_used:
-    min_pass_rate: 0.9
-  maintenance_quality:
+  scan_validation_handling:
+    min_pass_rate: 1.0
+  shallow_gate_respected:
+    min_pass_rate: 0.83
+  drift_table_and_mechanical_fixes:
+    min_pass_rate: 1.0
+  escalation_flagged:
+    min_pass_rate: 1.0
+  quality_checks_flagged:
+    min_pass_rate: 0.83
+  maintain_quality:
     min_mean: 3.5

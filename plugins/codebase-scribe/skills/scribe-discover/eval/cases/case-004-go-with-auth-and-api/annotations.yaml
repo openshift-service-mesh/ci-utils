@@ -1,5 +1,0 @@
-expected_component_count: 3
-expected_entry_points:
-  - main.go
-expected_test_framework: "testing"
-expected_build_system: "go"

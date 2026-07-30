@@ -1,0 +1,48 @@
+docs_dir: docs/agents
+scenario: "quality checks, mature tier — a mature topic missing its TL;DR blockquote and carrying a section with no code references; the 5-section skeleton must NOT be demanded of it (post-wave-1 two-tier behavior, not the pre-improvement architecture)"
+quality_checks:
+  topic: deployment-guide
+
+  # Asserted against the §13 summary's "Quality issues" entry only — not the
+  # whole transcript. One topic in this case, so every finding in that list is
+  # a finding about deployment-guide; no attribution needed.
+  expect_reported:
+    - label: "missing TL;DR blockquote"
+      any_of: ["TL;DR", "TLDR", "TL:DR", "blockquote"]
+    - label: "actionability: section with no code references"
+      any_of: ["Rollout Philosophy"]
+
+  # The negative that discriminates the architectures. Pre-wave-1, §7 demanded
+  # all 5 skeleton headings on EVERY topic; post-wave-1 the skeleton is
+  # stub-only (§1's two-tier structure) and a mature topic may use free-form
+  # headings. deployment-guide.md has none of these four, and there is no stub
+  # in this case — so no quality finding here may name any of them, whatever
+  # the run's phrasing. Plain containment inside the "Quality issues" entry;
+  # no keyword, adjacency or ordering rule is involved.
+  expect_absent:
+    - "Key Entry Points"
+    - "Patterns & Conventions"
+    - "Gotchas"
+    - "Dependencies & Context"
+
+  fixture_premise:
+    # Guards both the negative's premise (these headings are genuinely absent,
+    # so naming them is always wrong) and §7's "do not auto-add" rule — a
+    # heading present in the OUTPUT was either always there or was added by
+    # the run, and both are failures of this case.
+    must_not_have_headings:
+      - "Key Entry Points"
+      - "Patterns & Conventions"
+      - "Gotchas"
+      - "Dependencies & Context"
+    # `Rollout Philosophy` is the actionability positive's anchor; `Overview`
+    # is its contrast (it has code references) and `Links` keeps §7's
+    # mature-topic Links advisory from firing. Renaming any of them silently
+    # voided an assertion under the previous judge; now it fails loudly.
+    must_have_headings:
+      - "Overview"
+      - "Rollout Philosophy"
+      - "Links"
+    # The seeded gap, and §7's "do not auto-add" rule for it: a blockquote in
+    # the output would mean either the fixture drifted or maintain added one.
+    must_not_have_tldr_blockquote: true

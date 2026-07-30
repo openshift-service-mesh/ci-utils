@@ -1,0 +1,26 @@
+topics:
+  - name: release-process
+    title: Release Process
+    tier: stub
+    # Step 5 row 1 (highest): the body carries the stub placeholder marker
+    # outside any fence — `stub`. Same evidence as `tier` here, but arrived at
+    # by a different test: the row would also fire on `migration_source`, which
+    # the maturity test deliberately ignores.
+    classification: stub
+    scan: null
+    freshness: 0
+    human_input: 0
+    completeness: 0
+    inferred_sections: []
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/release/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# `scan: null` deliberately — §7 Quality Checks (structural validation and the
+# actionability check) are purely textual/structural: they read the topic body
+# directly and never depend on a resolved git diff.

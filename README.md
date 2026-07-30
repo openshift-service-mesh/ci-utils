@@ -240,8 +240,9 @@ graph LR
     cr --> c3["skills/\ntriage · consolidation\nadversarial-review · ..."]
 
     cs --> s1["commands/\ncodebase-scribe"]
-    cs --> s2["hooks/\ndoc-validate"]
-    cs --> s3["skills/\nscribe-discover · scribe-draft\nscribe-maintain · scribe-review"]
+    cs --> s2["agents/\nscribe-review"]
+    cs --> s3["hooks/\ndoc-validate"]
+    cs --> s4["skills/\nscribe-discover · scribe-draft\nscribe-maintain · scribe-review"]
 ```
 
 ```
@@ -279,16 +280,23 @@ plugins/
 └── codebase-scribe/
     ├── commands/
     │   └── codebase-scribe.md  # Main orchestrator command
+    ├── agents/
+    │   └── scribe-review.md    # Two-pass documentation review subagent
     ├── hooks/
     │   ├── hooks.json          # PostToolUse doc validation
-    │   └── doc-validate.sh
+    │   ├── doc-validate.sh
+    │   └── test-doc-validate.sh # Harness for doc-validate.sh
+    ├── scripts/
+    │   ├── check-sync.sh       # Verifies both plugin.json manifests and both marketplace.json entries declare the same version
+    │   ├── scribe-lib.py       # Canonical deterministic operations (sections, scores, scan validation, review classification, state writers)
+    │   └── test-scribe-lib.sh  # Harness for scribe-lib.py
+    ├── references/
+    │   └── hub-management.md   # AGENTS.md hub management (Step 12), read on demand by the command
     └── skills/
         ├── scribe-discover/    # Stub creator for approved topics
         ├── scribe-draft/       # Source code reader and content generator
         ├── scribe-maintain/    # Drift detection and auto-fix
-        ├── scribe-review/      # Two-pass documentation verification
-        └── prompts/
-            └── review-adversarial.md
+        └── scribe-review/      # Thin dispatcher for the scribe-review agent
 ```
 
 ---

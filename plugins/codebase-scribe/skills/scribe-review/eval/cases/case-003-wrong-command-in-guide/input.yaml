@@ -1,8 +1,0 @@
-staleness_type: "wrong_command"
-expected_stale_sections:
-  - "Development Guide"
-expected_current_sections:
-  - "Architecture"
-  - "Key Directories"
-  - "Testing"
-  - "Dependencies"

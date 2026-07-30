@@ -1,0 +1,11 @@
+_meta:
+  notification-templates_extracted_at: "unknown"
+
+claims:
+  - id: notification-templates-1
+    type: pattern
+    topic: notification-templates
+    claim: "Templates are cached in memory after compilation"
+    source: "internal/notifytemplates/cache.go"
+    provenance:
+      origin: inferred

@@ -1,0 +1,11 @@
+_meta:
+  search-indexing_extracted_at: "not-a-real-sha"
+
+claims:
+  - id: search-indexing-1
+    type: constraint
+    topic: search-indexing
+    claim: "BuildIndex holds the whole corpus in memory"
+    source: "internal/search/indexer.go"
+    provenance:
+      origin: inferred

@@ -1,0 +1,7 @@
+scenario: "deprecated-as-current — doc documents EvaluateFlag as the live path"
+expected_verdict: REWORK_NEEDED
+expected_critical_tags:
+  - DEPRECATED
+expected_evidence_contains:
+  - "Deprecated"
+expected_recommendation_kind: targeted

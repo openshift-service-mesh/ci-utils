@@ -1,0 +1,17 @@
+docs_dir: docs/agents
+topic_name: payments-integration
+mode: normal-draft
+was_stub: true
+expected_human_sections_include_any_of:
+  - dependencies--context
+  - gotchas
+check_human_input_exact: true
+expect_claims: true
+max_claims: 20
+expected_user_claim_contains: idempotency
+forbidden_changelog_phrases:
+  - now supports
+  - was added
+  - previously
+  - formerly
+  - is now

@@ -1,58 +1,112 @@
 name: codebase-scribe-eval
-description: Evaluate scribe-review for identifying AGENT.md staleness and generating actionable update recommendations
+description: Evaluate scribe-review's dispatching stub for correct Step 9c brief construction and verbatim agent report relay
 skill: codebase-scribe:scribe-review
 
 execution:
   mode: case
-  arguments: ""
+  # The Step 9c brief the orchestrator constructs. An empty arguments string
+  # left the skill with nothing to dispatch on.
+  arguments: |
+    topic_name: {{ input.topic_name }}
+    docs_dir: {{ input.docs_dir }}
+    watch_paths: {{ input.watch_paths }}
+    source_files: {{ input.source_files }}
+    change_classification: {{ input.change_classification }}
+    change_summary: {{ input.change_summary }}
+    claims: {{ input.claims }}
+    topic_content: |
+      {{ input.topic_content | indent(2) }}
   timeout: 900
   max_budget_usd: 3.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
   judge: claude-opus-4-6
 
 permissions:
-  allow: []
+  allow:
+    - Agent
+    - Read
+    - Bash
+    - Grep
+    - Glob
   deny: []
 
 mlflow:
   experiment: codebase-scribe-eval
 
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-review/eval/cases
+  path: eval/cases
+  workspace:
+    # The dispatched agent must Read the real sources itself rather than trust
+    # the brief; without this only input.yaml reached the workspace and there
+    # was nothing to read. Each entry is a case-relative path copied verbatim,
+    # preserving its name — the source trees live at the case root (their
+    # basenames vary by case: internal/, cache/, orders/), because source_files,
+    # claims and topic_content all reference them at the repo root. Entries a
+    # given case does not carry are skipped.
+    files:
+      - internal
+      - cache
+      - orders
   schema: |
     Each case directory contains:
-    - input.yaml: YAML file with:
-      * staleness_type: type of drift introduced (e.g., "new_component_undocumented",
-        "wrong_command", "renamed_module", "outdated_architecture", "fresh_up_to_date")
-      * expected_stale_sections: list of section names that are stale in this case
-      * expected_current_sections: list of sections that are up to date
-    - src/: current source code state (with changes that made AGENT.md stale)
-    - AGENT.md: existing AGENT.md that may be stale relative to src/
-    - .claude/scribe/inventory.yaml: pre-existing inventory (may be stale)
-    - annotations.yaml:
-      * expected_staleness_detected: boolean — if true, staleness should be found
-      * expected_stale_section_count: number of stale sections to detect (0 if fresh)
-      * expected_recommendation_type: one of "no_action", "update_sections", "full_redraft"
+    - input.yaml: the Step 9c brief, passed to the scribe-review SKILL exactly
+      as the orchestrator would construct it — YAML with:
+      * topic_name, topic_content (full current markdown of the topic file),
+        watch_paths, docs_dir, source_files (prioritized list capped at
+        budgets.files_per_topic), claims (from .claims.yml, with provenance),
+        change_classification, change_summary
+      Nothing else: the answer key (which error was seeded, which tag it must
+      produce) lives only in annotations.yaml, which the skill under test never
+      sees. Judges that need it template it as {{ outputs.annotations.<field> }}
+      rather than {{ arguments.<field> }} — putting an eval-only field back
+      into input.yaml would feed the agent the answer it is being graded on
+    - the case's source tree at the case root (internal/, cache/, or orders/
+      depending on the case): the actual source files listed in source_files,
+      with the seeded documentation error baked in (wrong-file attribution,
+      deprecated code documented as current, or changelog language) — the
+      dispatched
+      `codebase-scribe:scribe-review` agent has real Read/Bash/Grep/Glob
+      access and must find these itself, not trust the brief
+    - annotations.yaml — the answer key, never passed to the skill:
+      * scenario: one line naming the seeded error, for the LLM judge's prompt
+      * expected_verdict: one of PASS | PASS_WITH_ANNOTATIONS | REWORK_NEEDED,
+        or a list of them when more than one verdict is contract-correct for
+        the case (see eval.md's Evaluation Notes on case-001)
+      * expected_critical_tags: list of tags (MISSING_REF, CONTRADICTION,
+        INCONSISTENCY, WRONG_FILE, DEPRECATED) expected in Critical Findings
+        (empty for a clean topic)
+      * expected_recommendation_kind: one of no_action | targeted | full_redraft,
+        or a list of them when more than one is contract-correct for the case
+        (see eval.md's Evaluation Notes on case-005)
+      * expected_evidence_contains: list of substrings (file paths/symbols)
+        that must appear in the finding's Evidence line
 
 outputs:
   - path: output
     schema: |
-      Staleness review report in conversation text (stdout-only, no files written to disk).
-      Use {{ conversation }} in judges to access the report.
-      Report structure:
-      - Staleness Assessment: "Up to date" or "Stale" with confidence level
-      - Stale Sections: list of section names with brief description of what's outdated
-      - Evidence: specific file/line evidence for each stale claim
-        (e.g., "src/api/handler.go defines /v2/users but AGENT.md documents /v1/users")
-      - Recommendation: one of:
-        * "No action needed" (if fresh)
-        * "Run /codebase-scribe:scribe-maintain to update: <sections>" (if partially stale)
-        * "Run /codebase-scribe:scribe-draft for a full redraft" (if severely stale)
+      The dispatching stub constructs the brief above, dispatches the
+      `codebase-scribe:scribe-review` agent via the Agent tool
+      (subagent_type: codebase-scribe:scribe-review), and returns the agent's
+      report verbatim as stdout — no files are written. Use {{ conversation }}
+      to access the full report. Report structure (unchanged from the agent's
+      own contract):
+        ## Review Summary
+        ## Critical Findings
+        ## Minor Findings
+        ## Unverifiable Claims
+        ## Verdict: <PASS | PASS_WITH_ANNOTATIONS | REWORK_NEEDED>
+        ## Recommendation
+      Recommendation line is exactly one of (P3 vocabulary, post-wave-6):
+        - "No action needed — the documentation is up to date."
+        - "Run `/codebase-scribe` again — targeted correction of sections: <list>."
+        - "Run `/codebase-scribe` again — full redraft recommended."
 
 traces:
   stdout: true
@@ -66,103 +120,353 @@ judges:
     arguments:
       max_cost_usd: 2.5
 
-  - name: staleness_assessment_correct
+  - name: dispatched_via_agent_not_handwritten
     description: |
-      Verifies that the staleness assessment (Stale/Up to date) matches
-      the expected_staleness_detected annotation.
+      SKILL.md's entire job is to construct the Step 9c brief and dispatch it
+      to the `codebase-scribe:scribe-review` agent via the Agent tool — never
+      to review the topic itself with a hand-written prompt. This judge proves
+      that mechanically, from the enabled event trace: exactly one Agent/Task
+      tool call carrying `subagent_type: codebase-scribe:scribe-review`, and a
+      child report in the trace whose verdict is the verdict that came back to
+      the caller. It previously asserted only report shape and internal verdict
+      consistency and said so itself — "not proof of dispatch; a hand-written
+      review that also faithfully copied the agent's format and verdict rule
+      would still pass" — which made the suite's central §3 requirement one
+      that no deterministic judge could fail. Those shape and consistency
+      checks are retained, because they still catch a malformed relay. The
+      consistency check runs one way only — critical findings require
+      REWORK_NEEDED — because the agent's fail-safe rule permits REWORK_NEEDED
+      with no critical finding, so the inverse is not a contract violation.
+      Where the trace cannot support the dispatch assertion, this judge FAILS
+      and says which part of the trace was missing; it never passes on an
+      assertion it could not make.
     check: |
-      import re
+      import re, json
       conversation = outputs.get("conversation", "")
-      annotations = outputs.get("annotations", {})
-      expected_stale = annotations.get("expected_staleness_detected", True)
-      is_stale_signal = bool(re.search(r'\bstale\b|\boutdated\b|\bincorrect\b|\bwrong\b', conversation, re.IGNORECASE))
-      is_current_signal = bool(re.search(r'up to date|current|no staleness|fresh', conversation, re.IGNORECASE))
-      if expected_stale and is_current_signal and not is_stale_signal:
-          return (False, "Expected staleness detected but review said 'up to date'")
-      if not expected_stale and is_stale_signal and not is_current_signal:
-          return (False, "Expected fresh doc but review detected staleness")
-      return (True, f"Staleness assessment correct: expected_stale={expected_stale}")
+      required_headers = ["## Review Summary", "## Critical Findings", "## Minor Findings", "## Unverifiable Claims", "## Recommendation"]
+      missing = [h for h in required_headers if h not in conversation]
+      if missing:
+          return (False, f"Missing structured report section(s) only the dispatched agent's Report Format produces: {missing}")
+      # LAST occurrence, as recommendation_actionable already does. A compliant
+      # transcript holds the report twice — the dispatched agent's own copy in
+      # the tool result, then the stub's verbatim relay — and the caller's
+      # output is the last one. Reading the first made this judge compare the
+      # child's verdict against the child's own report below, an identity that
+      # holds however badly the stub rewrote its relay.
+      verdict_matches = list(re.finditer(r'##\s*Verdict:\s*(PASS_WITH_ANNOTATIONS|PASS|REWORK_NEEDED)\b', conversation))
+      if not verdict_matches:
+          return (False, "No parseable '## Verdict: <...>' line — the dispatched agent's report always includes one")
+      verdict = verdict_matches[-1].group(1)
 
-  - name: evidence_with_file_refs
+      # --- mechanical dispatch proof, from traces.events ---
+      EXPECTED_SUBTYPE = "codebase-scribe:scribe-review"
+      events = outputs.get("events")
+      if isinstance(events, bytes):
+          events = events.decode("utf-8", "replace")
+      if isinstance(events, str):
+          try:
+              events = json.loads(events)
+          except ValueError:
+              rows = []
+              for raw in events.splitlines():
+                  raw = raw.strip()
+                  if not raw:
+                      continue
+                  try:
+                      rows.append(json.loads(raw))
+                  except ValueError:
+                      pass
+              events = rows
+      if not events:
+          return (False, "outputs['events'] is empty or absent, so dispatch cannot be proven — this suite sets traces.events: true precisely so it can be. Fix the runner's event surfacing rather than treating this judge as satisfied; a green result here would mean nothing.")
+
+      def walk(node):
+          if isinstance(node, dict):
+              yield node
+              for value in node.values():
+                  yield from walk(value)
+          elif isinstance(node, list):
+              for value in node:
+                  yield from walk(value)
+
+      nodes = list(walk(events))
+      # A dispatch whose tool_result came back is_error is a failed attempt (e.g.
+      # blocked by a host-side hook) — a retry after it is correct behavior, so
+      # only dispatches that did not error count toward the exactly-one rule.
+      errored_ids = set()
+      for node in nodes:
+          tid = node.get("tool_use_id") or node.get("toolUseId")
+          if tid and (node.get("is_error") is True or node.get("isError") is True):
+              errored_ids.add(tid)
+      dispatches = []
+      for node in nodes:
+          name = node.get("name") or node.get("tool_name") or node.get("toolName")
+          if name not in ("Agent", "Task"):
+              continue
+          args = node.get("input") or node.get("tool_input") or node.get("arguments") or node.get("parameters")
+          if not isinstance(args, dict):
+              continue
+          subtype = args.get("subagent_type") or args.get("subagentType")
+          if subtype is not None:
+              dispatches.append((subtype, node.get("id") or node.get("tool_use_id")))
+      if not dispatches:
+          return (False, f"No Agent/Task tool call carrying a subagent_type appears in outputs['events'] — either the stub reviewed the topic itself instead of dispatching {EXPECTED_SUBTYPE}, or the trace does not record tool inputs. Both are defects to fix, not conditions to pass under.")
+      on_target = [s for s, i in dispatches if s == EXPECTED_SUBTYPE and i not in errored_ids]
+      # Errored attempts excuse only retries: every errored on-target attempt
+      # must PRECEDE the first successful one — a successful dispatch followed
+      # by a blocked second attempt is still a double dispatch.
+      first_ok_seen = False
+      for s, i in dispatches:
+          if s != EXPECTED_SUBTYPE:
+              continue
+          if i in errored_ids:
+              if first_ok_seen:
+                  return (False, f"An errored {EXPECTED_SUBTYPE} dispatch attempt FOLLOWED a successful one — retry-after-error is excused, a second attempt after success is not")
+          else:
+              first_ok_seen = True
+      if len(on_target) != 1:
+          off_target = [s for s, i in dispatches if s != EXPECTED_SUBTYPE]
+          failed = sum(1 for s, i in dispatches if s == EXPECTED_SUBTYPE and i in errored_ids)
+          return (False, f"Expected exactly one successful dispatch of subagent_type {EXPECTED_SUBTYPE}; found {len(on_target)} ({failed} errored attempt(s) excluded; other subagent_types dispatched: {off_target})")
+
+      # The child's report must be the report the caller relayed. Look for it in
+      # tool-result-shaped nodes only — matching any string in the trace would
+      # re-admit the hand-written case, since the relay itself is in there too.
+      def result_strings(node):
+          looks_like_result = any(k in node for k in ("tool_use_id", "toolUseId", "tool_result", "toolResult")) \
+              or str(node.get("type", "")).lower().find("result") >= 0 \
+              or str(node.get("subtype", "")).lower().find("result") >= 0
+          if not looks_like_result:
+              return []
+          return [v for v in node.values() if isinstance(v, str)] + \
+                 [s for v in node.values() if isinstance(v, (dict, list)) for n in walk(v) for s in (n.values() if isinstance(n, dict) else []) if isinstance(s, str)]
+
+      child_verdicts = []
+      for node in nodes:
+          for text in result_strings(node):
+              if "## Review Summary" not in text:
+                  continue
+              child = re.search(r'##\s*Verdict:\s*(PASS_WITH_ANNOTATIONS|PASS|REWORK_NEEDED)\b', text)
+              if child:
+                  child_verdicts.append(child.group(1))
+      if not child_verdicts:
+          return (False, "The event trace records a scribe-review dispatch but carries no subagent result containing the agent's report, so the relayed report cannot be tied to the child that produced it. Surface tool results in the trace; do not weaken this to a shape check again.")
+      if verdict not in child_verdicts:
+          return (False, f"Relayed verdict {verdict} does not match any verdict in the dispatched agent's own report ({child_verdicts}) — the stub must return the agent's report verbatim, not a rewritten one")
+      # Last occurrence too — the consistency check below pairs this section
+      # with `verdict` above, and reading the two from different copies of the
+      # report would compare one run's findings against another's verdict.
+      crit_sections = list(re.finditer(r'## Critical Findings\s*\n(.*?)(?=\n## Minor)', conversation, re.DOTALL))
+      crit_text = crit_sections[-1].group(1).strip() if crit_sections else ""
+      has_critical_tags = bool(re.search(r'\[(MISSING_REF|CONTRADICTION|INCONSISTENCY|WRONG_FILE|DEPRECATED)\]', crit_text))
+      crit_is_none = (not crit_text) or crit_text.lower().startswith("none")
+      if has_critical_tags and verdict != "REWORK_NEEDED":
+          return (False, f"Critical findings present but verdict={verdict} — violates the agent's own verdict rule ('Any critical finding -> REWORK_NEEDED')")
+      # The reverse direction is NOT asserted: an empty Critical Findings section
+      # with verdict=REWORK_NEEDED is contract-sanctioned, because the agent's
+      # verdict rules end with "If in doubt -> REWORK_NEEDED (fail-safe)" — a
+      # verdict that rule permits without any critical finding to back it.
+      # Failing it here would fail a protocol-compliant report. Whether
+      # REWORK_NEEDED was the *right* verdict for a given case is verdict_correct's
+      # job; this judge only checks the direction the contract determines.
+      if not has_critical_tags and not crit_is_none:
+          return (False, "Critical Findings section is non-empty but uses no tag from the agent's defined classification vocabulary")
+      return (True, f"Exactly one {EXPECTED_SUBTYPE} dispatch in the event trace, its report's verdict '{verdict}' relayed unchanged, and the relay is internally consistent with its Critical Findings")
+
+  - name: report_format_valid
     description: |
-      Verifies that every stale section claim is backed by specific file/line evidence,
-      not vague assertions like "the architecture may have changed."
+      The relayed report must keep the agent's exact section structure so the
+      orchestrator's Step 9d can parse the ## Verdict: line programmatically.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      required_headers = ["## Review Summary", "## Critical Findings", "## Minor Findings", "## Unverifiable Claims", "## Recommendation"]
+      missing = [h for h in required_headers if h not in conversation]
+      if missing:
+          return (False, f"Missing required report section(s): {missing}")
+      verdict_match = re.search(r'##\s*Verdict:\s*(PASS_WITH_ANNOTATIONS|PASS|REWORK_NEEDED)', conversation)
+      if not verdict_match:
+          return (False, "No parseable '## Verdict: <...>' line found")
+      return (True, f"Report format valid, verdict={verdict_match.group(1)}")
+
+  - name: verdict_correct
+    description: |
+      The parsed verdict must match the expected verdict for this case's
+      seeded errors (or lack thereof). `expected_verdict` may be a list when
+      more than one verdict is contract-correct — case-001's clean topic
+      accepts PASS or PASS_WITH_ANNOTATIONS, since the agent's own thin-section
+      heuristic can legitimately raise a minor finding on a realistic fixture.
     check: |
       import re
       conversation = outputs.get("conversation", "")
       annotations = outputs.get("annotations", {})
-      expected_stale = annotations.get("expected_staleness_detected", True)
-      if not expected_stale:
-          return (True, "No staleness expected — no evidence needed")
-      stale_claims = re.findall(r'(stale|outdated|incorrect|wrong|missing)[^\n]{0,80}', conversation, re.IGNORECASE)
-      if not stale_claims:
-          return (True, "No explicit stale claims to validate (overall assessment covered by other judges)")
-      claims_with_evidence = sum(1 for c in stale_claims if re.search(r'`[^`]+`|src/|\.go|\.py|\.ts', c))
-      ratio = claims_with_evidence / len(stale_claims)
-      if ratio < 0.6:
-          return (False, f"Only {claims_with_evidence}/{len(stale_claims)} stale claims have file evidence")
-      return (True, f"{claims_with_evidence}/{len(stale_claims)} stale claims backed by file references")
+      expected = annotations.get("expected_verdict")
+      if not expected:
+          return (True, "No expected_verdict annotation for this case")
+      accepted = expected if isinstance(expected, list) else [expected]
+      # Last occurrence — the graded output is the stub's relay, and a
+      # compliant transcript carries the dispatched agent's own copy of the
+      # report ahead of it.
+      verdict_matches = list(re.finditer(r'##\s*Verdict:\s*(PASS_WITH_ANNOTATIONS|PASS|REWORK_NEEDED)', conversation))
+      actual = verdict_matches[-1].group(1) if verdict_matches else None
+      if actual not in accepted:
+          return (False, f"Verdict={actual}, expected one of {accepted}")
+      return (True, f"Verdict correctly {actual}")
+
+  - name: findings_tag_and_evidence
+    description: |
+      Seeded errors (wrong-file attribution, deprecated-as-current, changelog
+      language) must surface as the correct critical tag with evidence citing
+      the actual file/symbol, not a vague assertion.
+    check: |
+      import re
+      conversation = outputs.get("conversation", "")
+      annotations = outputs.get("annotations", {})
+      expected_tags = annotations.get("expected_critical_tags", [])
+      # Both windows below take the LAST `## Critical Findings`, matching
+      # recommendation_actionable: a compliant transcript holds the report
+      # twice — the dispatched agent's copy in the tool result, then the stub's
+      # verbatim relay — and the graded output is the relay. Reading the first
+      # copy graded the child's report instead, so a relay that dropped or
+      # rewrote its findings passed on the strength of the child's.
+      if not expected_tags:
+          none_sections = list(re.finditer(r'## Critical Findings\s*\n(.*?)(?=\n##)', conversation, re.DOTALL))
+          none_text = none_sections[-1].group(1).strip() if none_sections else ""
+          if none_text and "none." not in none_text.lower():
+              return (False, "expected_critical_tags is empty but Critical Findings is non-empty")
+          return (True, "No critical findings expected, none found")
+      # Scoped to the Critical Findings section, not the whole conversation: a
+      # tag sitting under Minor Findings — or quoted in the agent's own tag
+      # vocabulary table — used to satisfy a *critical* expectation, which is
+      # the one thing this judge exists to assert. The evidence check below was
+      # already scoped this way; both now read the same window.
+      crit_sections = list(re.finditer(r'## Critical Findings\s*\n(.*?)(?=\n## Minor)', conversation, re.DOTALL))
+      crit_text = crit_sections[-1].group(1) if crit_sections else ""
+      missing = [t for t in expected_tags if f"[{t}]" not in crit_text]
+      if missing:
+          return (False, f"Expected critical tag(s) not found in the report's Critical Findings section: {missing}")
+      evidence_terms = annotations.get("expected_evidence_contains", [])
+      missing_evidence = [t for t in evidence_terms if t not in crit_text]
+      if missing_evidence:
+          return (False, f"Critical Findings evidence missing expected reference(s): {missing_evidence}")
+      return (True, f"Found expected tag(s) {expected_tags} with evidence")
 
   - name: recommendation_actionable
     description: |
-      Verifies the report ends with a specific, actionable recommendation
-      using the correct scribe command rather than vague guidance.
+      The protocol is "exactly one line, selected per the Recommendation
+      rules": one of three complete sentences, and nothing else under the
+      heading. This judge splits the section into non-blank lines, requires
+      exactly one, and matches that whole line against the three exact forms —
+      including the De-P3 carve-out, which forbids the retired per-skill-name
+      phrasing ("Run scribe-maintain to update...", "Run scribe-draft for a
+      full redraft"). Testing for a substring somewhere under the heading, as
+      it did before, accepted added commentary, several conflicting
+      recommendations at once, and reworded text, all of which break the
+      orchestrator-facing output contract this line exists to satisfy.
+      `expected_recommendation_kind` accepts a list as well as a single kind,
+      exactly as `expected_verdict` does — the exact-line and no-retired-wording
+      assertions are protocol-determined and stay strict for every case, while
+      the choice *between* the targeted and full-redraft lines is a severity
+      judgment the Recommendation rules do not always narrow to one.
     check: |
       import re
       conversation = outputs.get("conversation", "")
       annotations = outputs.get("annotations", {})
-      expected_rec_type = annotations.get("expected_recommendation_type", "update_sections")
-      if expected_rec_type == "no_action":
-          if "no action" in conversation.lower() or "up to date" in conversation.lower():
-              return (True, "Correct 'no action needed' recommendation")
-          return (0.5, "Expected 'no action' recommendation but not clearly stated")
-      scribe_maintain_ref = bool(re.search(r'scribe-maintain|scribe maintain', conversation, re.IGNORECASE))
-      scribe_draft_ref = bool(re.search(r'scribe-draft|scribe draft', conversation, re.IGNORECASE))
-      if expected_rec_type == "update_sections" and not scribe_maintain_ref:
-          return (False, "Expected scribe-maintain recommendation but not mentioned")
-      if expected_rec_type == "full_redraft" and not scribe_draft_ref:
-          return (False, "Expected scribe-draft (redraft) recommendation but not mentioned")
-      return (True, f"Actionable recommendation present for type '{expected_rec_type}'")
+      expected_kind = annotations.get("expected_recommendation_kind")
+      # LAST occurrence, bounded at the next `##` heading or end-of-string —
+      # the shape the maintain suite's structural judge already uses. Anchoring
+      # on the FIRST `## Recommendation` and spanning to \Z swallowed everything
+      # after it, so a compliant run carrying both the dispatched agent's report
+      # and the stub's verbatim relay failed the exactly-one-line check on the
+      # strength of having relayed correctly.
+      rec_sections = list(re.finditer(r'##\s*Recommendation\s*\n(.*?)(?=\n##\s|\Z)', conversation, re.DOTALL))
+      rec_block = rec_sections[-1].group(1) if rec_sections else ""
+      lines = [ln.strip() for ln in rec_block.split("\n") if ln.strip()]
+      if not lines:
+          return (False, "No ## Recommendation section content found")
+      if len(lines) != 1:
+          return (False, f"## Recommendation must hold exactly one line; found {len(lines)}: {lines}")
+      line = lines[0]
+      retired_phrases = ["scribe-maintain to update", "scribe-draft for a full redraft", "Run /codebase-scribe:scribe-maintain", "Run /codebase-scribe:scribe-draft"]
+      found_retired = [p for p in retired_phrases if p.lower() in line.lower()]
+      if found_retired:
+          return (False, f"Retired pre-wave-6 recommendation phrasing found: {found_retired}")
+      # List and emphasis decoration is tolerated because the agent's own rules
+      # render the three options as bold bullets, so a literal reader may carry
+      # that formatting across. The wording itself is not tolerated at all.
+      bare = re.sub(r'^[-*+]\s+', '', line).strip()
+      bare = re.sub(r'^\*\*(.*)\*\*$', r'\1', bare).strip()
+      exact = [
+          ("no_action", r'^No action needed — the documentation is up to date\.$'),
+          ("targeted", r'^Run `/codebase-scribe` again — targeted correction of sections: .+\.$'),
+          ("full_redraft", r'^Run `/codebase-scribe` again — full redraft recommended\.$'),
+      ]
+      kind = next((k for k, pattern in exact if re.match(pattern, bare)), None)
+      if kind is None:
+          return (False, f"Recommendation is not one of the three exact protocol lines (em dashes and backticks included): {bare!r}")
+      # `expected_recommendation_kind` may be a list, mirroring
+      # `expected_verdict`'s handling in verdict_correct — for a case whose
+      # severity the Recommendation rules do not determine to a single line
+      # (see eval.md's Evaluation Notes on case-005).
+      accepted_kinds = expected_kind if isinstance(expected_kind, list) else ([expected_kind] if expected_kind else [])
+      if accepted_kinds and kind not in accepted_kinds:
+          return (False, f"Recommendation is the {kind!r} line, expected one of {accepted_kinds}: {bare!r}")
+      return (True, f"Exactly one Recommendation line, matching the {kind!r} protocol form verbatim")
 
   - name: review_quality
     description: |
-      LLM evaluates whether the staleness review is accurate, evidence-backed,
-      and provides a recommendation that matches the severity of drift found.
+      LLM evaluates whether the relayed review is accurate, evidence-backed,
+      and its recommendation matches the severity of the seeded error(s),
+      using the post-wave-6 recommendation vocabulary.
     prompt: |
-      Evaluate the quality of this scribe-review report.
+      Evaluate the quality of this scribe-review dispatch and report.
 
-      Staleness type introduced: {{ arguments.staleness_type }}
-      Expected stale sections: {{ arguments.expected_stale_sections }}
+      Seeded error scenario: {{ outputs.annotations.scenario }}
+      Expected critical tags: {{ outputs.annotations.expected_critical_tags }}
 
-      Review report:
+      Full transcript (including the dispatched agent's report):
       {{ conversation }}
 
       Assess:
-      1. Did the review correctly identify the stale sections (no false positives, no missed drift)?
-      2. Is each stale claim backed by specific file/line evidence?
-      3. Is the recommendation appropriate to the severity (maintain vs full redraft)?
-      4. Does the review avoid flagging sections as stale when they're actually correct?
-      5. Is the report concise — focused on actionable findings, not exhaustive file listings?
+      1. Did the skill dispatch the real `codebase-scribe:scribe-review` agent
+         (via the Agent tool) rather than reviewing the topic itself with a
+         hand-written prompt?
+      2. Is the relayed report byte-for-byte the agent's structured format
+         (Review Summary / Critical Findings / Minor Findings / Unverifiable
+         Claims / Verdict / Recommendation), not paraphrased or summarized?
+      3. Does each critical finding cite concrete evidence (a command's output,
+         or the actual file content) rather than a vague assertion?
+      4. Is the Recommendation line exactly one of the three post-wave-6
+         strings, matching the severity of what was found?
+      5. For a changelog-language scenario, was it correctly classified as a
+         CONTRADICTION (per the agent's "Common LLM Documentation Errors" #6),
+         not merely noted as a style issue?
 
       Score 1-5:
-      1: Major errors — missed the staleness type or flagged correct sections as stale
-      2: Partial detection — some stale sections found but significant false positives
-      3: Correct detection but evidence weak or recommendation mismatched to severity
-      4: Good review: correct sections identified with file evidence, appropriate recommendation
-      5: Excellent: precise stale/current discrimination, evidence-backed, severity-matched recommendation
-
-    arguments:
-      staleness_type: "{{ arguments.staleness_type }}"
-      expected_stale_sections: "{{ arguments.expected_stale_sections }}"
+      1: Wrong verdict, hand-written review instead of a dispatch, or retired vocabulary
+      2: Dispatched correctly but findings vague or recommendation severity mismatched
+      3: Correct verdict and format but evidence weak in places
+      4: Solid review with a minor gap
+      5: Fully matches the §3 contract for this scenario
 
 thresholds:
+# This suite has 5 cases, so any min_pass_rate above 0.8 already requires 5/5:
+# 0.9 was arithmetically identical to 1.0 and only read as tolerance for one
+# flaky case. Stated as 1.0 honestly rather than lowered to 0.8 — several cases
+# turn on a single deliberately-constructed discriminating assertion, and
+# admitting one failure would let exactly those regress silently. (The figure
+# speaks for this suite only: sibling suites size their own thresholds.)
   budget_check:
     min_pass_rate: 1.0
-  staleness_assessment_correct:
-    min_pass_rate: 0.9
-  evidence_with_file_refs:
-    min_pass_rate: 0.85
+  dispatched_via_agent_not_handwritten:
+    min_pass_rate: 1.0
+  report_format_valid:
+    min_pass_rate: 1.0
+  verdict_correct:
+    min_pass_rate: 1.0
+  findings_tag_and_evidence:
+    min_pass_rate: 1.0
   recommendation_actionable:
-    min_pass_rate: 0.9
+    min_pass_rate: 1.0
   review_quality:
     min_mean: 3.5

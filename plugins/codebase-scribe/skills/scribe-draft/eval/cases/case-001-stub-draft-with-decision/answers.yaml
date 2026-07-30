@@ -1,0 +1,16 @@
+# answers.yaml — LLM answerer guidance for case-001
+#
+# scribe-draft will ask exactly one §6 design-decision question about the
+# most significant non-obvious architectural choice it finds while drafting
+# payments-integration. The in-process idempotency cache (instead of a
+# shared store like Redis) is the intended target.
+
+answer: >
+  We run this service as a single instance today, so an in-process idempotency
+  cache avoids the operational cost of standing up Redis for one process.
+  We'll swap to a shared store when we horizontally scale.
+
+skip: false
+
+standard_files_to_generate: []
+decision_drift_choice: null

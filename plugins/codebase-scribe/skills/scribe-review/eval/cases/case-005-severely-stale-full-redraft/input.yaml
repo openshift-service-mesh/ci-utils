@@ -1,7 +1,46 @@
-staleness_type: "outdated_architecture"
-expected_stale_sections:
-  - "Architecture"
-  - "Key Directories"
-  - "Development Guide"
-expected_current_sections:
-  - "Dependencies"
+topic_name: order-processing
+docs_dir: docs/agents
+watch_paths: ["orders/"]
+source_files:
+  - orders/create.go
+  - orders/capture.go
+  - orders/shipping.go
+  - orders/shipping_v2.go
+claims:
+  - id: order-processing-1
+    type: pattern
+    topic: order-processing
+    claim: "OrderService in orders/service.go creates orders"
+    source: "orders/service.go"
+    provenance:
+      origin: inferred
+change_classification: large_diff
+change_summary: "Redraft pass after several weeks of untracked churn."
+topic_content: |
+  # Order Processing
+
+  > This doc covers order creation, payment capture, and fulfillment under
+  > `orders/`.
+
+  ## Overview
+
+  An order moves through three stages: creation, payment capture, and
+  fulfillment, each owned by a dedicated file.
+
+  ## Order Creation
+
+  Orders are created by `OrderService.Create` in `orders/service.go`, which
+  validates the cart and reserves inventory.
+
+  ## Payment Capture
+
+  Payment is captured by `CapturePayment` in `orders/capture.go`, which
+  charges the customer's saved payment method and marks the order paid.
+
+  ## Fulfillment
+
+  Shipping cost is calculated by `CalculateShipping` in
+  `orders/shipping.go`, using a flat per-region rate table.
+
+  ## Links
+  No related topics yet.

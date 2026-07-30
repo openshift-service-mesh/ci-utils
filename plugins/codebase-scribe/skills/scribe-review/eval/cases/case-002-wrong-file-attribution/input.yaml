@@ -1,0 +1,39 @@
+topic_name: cache-layer
+docs_dir: docs/agents
+watch_paths: ["cache/"]
+source_files:
+  - cache/informer_cache.go
+  - cache/kube_cache.go
+claims:
+  - id: cache-layer-1
+    type: pattern
+    topic: cache-layer
+    claim: "Cache is populated by informers via NewKubeCache"
+    source: "cache/kube_cache.go"
+    provenance:
+      origin: inferred
+change_classification: claim_change
+change_summary: "Enriched Cache Population section after a maintain pass."
+topic_content: |
+  # Cache Layer
+
+  > This doc covers the in-memory Kubernetes object cache under `cache/`.
+
+  ## Overview
+
+  The cache mirrors a subset of cluster objects locally to avoid hammering
+  the API server on every reconcile loop.
+
+  ## Cache Population
+
+  The cache is populated by informers in `NewKubeCache` in
+  `cache/kube_cache.go`. Informers watch the relevant object types and push
+  updates into the cache as they arrive.
+
+  ## Eviction
+
+  Stale entries are evicted by `EvictExpired` in `cache/kube_cache.go`, run
+  on a periodic ticker.
+
+  ## Links
+  No related topics yet.

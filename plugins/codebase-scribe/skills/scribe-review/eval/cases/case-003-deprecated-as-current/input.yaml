@@ -1,0 +1,34 @@
+topic_name: feature-flags
+docs_dir: docs/agents
+watch_paths: ["internal/flags/"]
+source_files:
+  - internal/flags/evaluator.go
+  - internal/flags/evaluator_v2.go
+claims:
+  - id: feature-flags-1
+    type: pattern
+    topic: feature-flags
+    claim: "Flags are evaluated via EvaluateFlag"
+    source: "internal/flags/evaluator.go"
+    provenance:
+      origin: inferred
+change_classification: section_change
+change_summary: "Documented flag evaluation after a stub draft."
+topic_content: |
+  # Feature Flags
+
+  > This doc covers flag evaluation under `internal/flags/`.
+
+  ## Overview
+
+  Every call site checks a flag through a single evaluation entry point
+  before branching.
+
+  ## Evaluation
+
+  Flags are evaluated by calling `EvaluateFlag` in
+  `internal/flags/evaluator.go`. It looks up the flag by name and returns
+  whether it is enabled for the current tenant.
+
+  ## Links
+  No related topics yet.

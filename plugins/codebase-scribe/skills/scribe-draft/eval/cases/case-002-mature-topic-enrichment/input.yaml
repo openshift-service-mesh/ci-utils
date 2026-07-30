@@ -1,0 +1,39 @@
+batch:
+  - name: backend-architecture
+    title: Backend Architecture
+    tier: mature
+    scan: "1111111aaaa2222bbbb3333cccc4444dddd5555"
+    freshness: 60
+    human_input: 25
+    completeness: 70
+    inferred_sections:
+      - id: overview
+        heading: "## Overview"
+      - id: components
+        heading: "## Components"
+      - id: links
+        heading: "## Links"
+    human_sections:
+      - gotchas
+    decisions:
+      - id: backend-architecture-2
+        type: constraint
+        claim: "Route registration is centralized in router.go rather than per-package init()"
+        context: "Per-package init() registration made route ordering non-deterministic across builds; centralizing in router.go made the route table auditable in one place."
+        recorded: "2026-04-02"
+        source: "internal/api/router.go"
+        status: active
+    question_passes: 0
+    watch_paths: ["internal/api/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# mode/topic_name are eval-only convenience fields (not part of the real
+# orchestrator brief) — they exist so {{ arguments.mode }} / {{
+# arguments.topic_name }} resolve in the LLM judge prompt, which templates
+# from input.yaml, not annotations.yaml.
+mode: normal-draft
+topic_name: backend-architecture

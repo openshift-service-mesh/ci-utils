@@ -1,0 +1,7 @@
+scenario: "wrong-file attribution — NewKubeCache attributed to the wrong file"
+expected_verdict: REWORK_NEEDED
+expected_critical_tags:
+  - WRONG_FILE
+expected_evidence_contains:
+  - "cache/informer_cache.go"
+expected_recommendation_kind: targeted

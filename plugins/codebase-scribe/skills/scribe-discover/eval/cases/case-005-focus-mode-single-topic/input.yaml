@@ -1,0 +1,5 @@
+docs_dir: docs/agents
+topics:
+  - name: notification-service
+    title: Notification Service
+    watch_paths: ["internal/notify/"]

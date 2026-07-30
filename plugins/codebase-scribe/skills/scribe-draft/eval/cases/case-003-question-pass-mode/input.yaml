@@ -1,0 +1,41 @@
+question_pass: true
+batch:
+  - name: observability
+    title: Observability
+    tier: mature
+    scan: "9999999fff8888eee7777ddd6666ccc5555bbb0"
+    freshness: 45
+    human_input: 0
+    completeness: 55
+    inferred_sections:
+      - id: key-entry-points
+        heading: "## Key Entry Points"
+      - id: patterns--conventions
+        heading: "## Patterns & Conventions"
+      - id: gotchas
+        heading: "## Gotchas"
+      - id: dependencies--context
+        heading: "## Dependencies & Context"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    question_passes: 0
+    watch_paths: ["internal/metrics/"]
+    stale_flags:
+      - id: patterns--conventions
+        heading: "## Patterns & Conventions"
+        flagged_at_sha: "1111111aaa2222bbb3333ccc4444ddd5555eee6"
+        reason: "semantic"
+        detail: "Registry wiring may have changed since this section was written."
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# mode/topic_name are eval-only convenience fields (not part of the real
+# orchestrator brief) — they exist so {{ arguments.mode }} / {{
+# arguments.topic_name }} resolve in the LLM judge prompt, which templates
+# from input.yaml, not annotations.yaml.
+mode: question-pass
+topic_name: observability

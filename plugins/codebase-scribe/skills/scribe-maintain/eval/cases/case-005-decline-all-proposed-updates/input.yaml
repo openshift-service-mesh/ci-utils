@@ -1,7 +1,0 @@
-change_type: "new_component"
-sections_expected_to_change: []
-sections_expected_unchanged:
-  - "Project Overview"
-  - "Architecture"
-  - "Development Guide"
-  - "Key Conventions"
