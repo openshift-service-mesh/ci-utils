@@ -1,0 +1,35 @@
+This case does NOT depend on any git diff or a resolvable `scan` SHA — `scan`
+is deliberately `null`. It makes no rename claim: `internal/profile/avatar_upload.go`
+is present, unchanged, and correctly attributed. `internal/profile/legacy_export.go`
+is simply absent — `ExportProfile` does not exist anywhere in
+`internal/profile/`. Whatever `git log --diff-filter=R` would return against
+whatever git history the harness happens to provision, this reference cannot
+resolve to a rename (there is no candidate new location referenced anywhere),
+so maintain should flag it deleted regardless of git-history depth.
+
+The "## Export" section references TWO files, deliberately: the absent
+`internal/profile/legacy_export.go` AND the present, correctly-attributed
+`internal/profile/export_schema.go` (`FormatExport` — a function, matching
+§3's existence check of `grep -r "func <name>"`; every other reference in
+these suites resolves to a `func` for the same reason). That is 1 broken out
+of 2 references in this section = 50%, below §9's 60% escalation threshold —
+so this case isolates the deletion path cleanly. It must NOT also trigger
+§9 Escalation (completeness reset to 0, an "escalated" stale flag); a case
+whose only broken section sits over 60% would make the deletion-only
+assertion ambiguous, since a spec-correct run would legitimately do both.
+
+`watch_paths: ["internal/profile/"]` has exactly two depth-1 subdirectories,
+also deliberately: `thumbnail/` (whose `resize.go` / `ResizeThumbnail` IS
+cited, in "## Media Handling") and `audit/` (whose `audit_log.go` is cited
+nowhere). §8 recalculates completeness unconditionally on every maintain
+pass — unlike freshness, it has no "leave it unchanged" rule for an
+invalid/shallow scan — as (subdirectories with at least one referenced file
+/ total subdirectories) x 100, which here is 1 / 2 x 100 = 50. An earlier
+revision of this fixture had NO depth-1 subdirectories, leaving that
+denominator at 0, a state §8 gives no rule for; the two directories exist
+precisely so a single value is derivable. Do not remove either one, and do
+not drop the `ResizeThumbnail` citation.
+
+Both added subdirectories are escalation-neutral: `thumbnail/resize.go`
+exists and defines `func ResizeThumbnail`, so "## Media Handling" is 0-of-2
+broken, and `audit/` is referenced by no section at all.

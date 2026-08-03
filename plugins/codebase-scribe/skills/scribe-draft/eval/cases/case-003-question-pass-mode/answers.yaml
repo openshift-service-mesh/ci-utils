@@ -1,0 +1,14 @@
+# answers.yaml — LLM answerer guidance for case-003 (question-pass mode)
+#
+# Question-pass mode asks exactly one §6 question about the existing content
+# (no source re-reading). The custom exporter.go wrapper around promhttp is
+# the intended target.
+
+answer: >
+  We wrap promhttp.Handler in exporter.go so we can inject the svc_ prefix
+  linter before registration — mounting promhttp directly would let
+  unprefixed metric names slip through.
+
+skip: false
+standard_files_to_generate: []
+decision_drift_choice: null

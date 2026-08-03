@@ -1,0 +1,5 @@
+docs_dir: docs/agents
+scenario: "escalation — 60%+ of a section's referenced files no longer exist"
+escalation_topic: notification-templates
+expected_completeness: 0
+expected_escalated_stale_flag: true

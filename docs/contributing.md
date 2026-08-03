@@ -40,9 +40,10 @@ Checklist before opening a PR:
 
 - [ ] `SKILL.md` has `name` + `description` frontmatter and a clear purpose/workflow/output body
 - [ ] Command `.md` has `name`, `description`, `argument-hint` frontmatter
-- [ ] Agent `.md` has `model`, `color`, `tools` frontmatter with a minimal tool allowlist
+- [ ] Agent `.md` has `model`, `color`, `tools` frontmatter with a minimal tool allowlist — `model` optional for plugins shipping to multiple hosts
 - [ ] Plugin listed in `.claude-plugin/marketplace.json` (new plugins only)
 - [ ] Both `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json` present
+- [ ] Version string identical across both `plugin.json` files and both `marketplace.json` entries — for `codebase-scribe`, run `bash plugins/codebase-scribe/scripts/check-sync.sh` (exits 0 when all four agree)
 
 ## Eval
 

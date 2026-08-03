@@ -1,0 +1,32 @@
+topic_name: search-indexing
+docs_dir: docs/agents
+watch_paths: ["internal/search/"]
+source_files:
+  - internal/search/indexer.go
+claims:
+  - id: search-indexing-1
+    type: pattern
+    topic: search-indexing
+    claim: "Indexing runs in parallel workers"
+    source: "internal/search/indexer.go"
+    provenance:
+      origin: inferred
+change_classification: minor_mechanical
+change_summary: "Small wording pass on the Overview section."
+topic_content: |
+  # Search Indexing
+
+  > This doc covers the search index build pipeline under `internal/search/`.
+
+  ## Overview
+
+  The indexer was recently updated to support incremental indexing, and it
+  now supports parallel workers for faster full rebuilds. Previously the
+  indexer ran as a single-threaded batch job.
+
+  ## Key Entry Points
+  - `internal/search/indexer.go`: `BuildIndex` walks the corpus and writes
+    the index using a configurable worker pool.
+
+  ## Links
+  No related topics yet.

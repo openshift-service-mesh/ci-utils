@@ -1,0 +1,16 @@
+brief: input.yaml
+# The distractor at docs/agents/unrelated-topic.md carries NO stub placeholder
+# marker, deliberately. It sits at the DEFAULT docs_dir, outside this case's
+# configured docs/dev-notes, and no_output_outside_docs_dir fails any
+# marker-bearing file outside expected_docs_dir — so a marker there failed that
+# judge unconditionally and no correct run could ever turn this suite green.
+# The file exists only to prove the custom docs_dir does not collide with a
+# prior run's output at the default location; the marker was never needed for
+# that. If you edit that fixture, do not reintroduce the marker.
+expected_docs_dir: docs/dev-notes
+expected_created:
+  - cli-commands
+  - config-loading
+expected_collisions: []
+forbidden_leakage_strings:
+  - NebulaConfigLoader

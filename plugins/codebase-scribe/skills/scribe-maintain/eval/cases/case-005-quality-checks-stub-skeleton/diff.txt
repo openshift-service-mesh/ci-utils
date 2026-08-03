@@ -1,0 +1,19 @@
+This case does NOT depend on any git diff or a resolvable `scan` SHA — the
+topic uses `scan: null`. §7 Quality Checks are purely textual/structural.
+
+The single topic is a stub: `release-process.md`'s body carries the literal
+"*Stub — will be populated by the draft skill." marker, so §7's stub tier
+applies and all five skeleton sections are required. Four are present
+(`Key Entry Points`, `Patterns & Conventions`, `Gotchas`,
+`Dependencies & Context`); `## Links` is absent. Maintain must report the
+missing `Links` section in its §13 "Quality issues" list, and must NOT add
+the section to the file.
+
+The TL;DR blockquote is present and every section is a single placeholder
+line, well under §7's 5-line actionability threshold — so the missing `Links`
+section is this case's only legitimate quality finding.
+
+The mature-topic half of §7 — missing TL;DR, the actionability check, and the
+negative that the 5-section skeleton is never demanded of a mature topic —
+lives in case-006, on a topic of its own. Keeping the two tiers in separate
+cases is load-bearing, not tidiness: see eval.md's §7 section.

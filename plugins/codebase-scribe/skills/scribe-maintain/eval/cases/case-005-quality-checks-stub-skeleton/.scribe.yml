@@ -1,0 +1,11 @@
+# Eval fixture config.
+#
+# Both SKILL.md files end with a Review Gate that follows the orchestrator's
+# Step 9, which dispatches the `codebase-scribe:scribe-review` agent. This
+# suite's permission allowlist grants neither `Agent` nor `Skill`, so a run
+# that reached the gate would terminate on an instruction it cannot carry
+# out. Step 9 is skipped entirely when `review.enabled` is false, which lets
+# each case finish cleanly at the skill's own boundary. Review behavior is
+# covered by the scribe-review suite instead.
+review:
+  enabled: false

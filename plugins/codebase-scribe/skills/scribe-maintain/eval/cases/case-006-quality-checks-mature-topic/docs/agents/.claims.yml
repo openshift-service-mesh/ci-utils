@@ -1,0 +1,11 @@
+_meta:
+  deployment-guide_extracted_at: "unknown"
+
+claims:
+  - id: deployment-guide-1
+    type: pattern
+    topic: deployment-guide
+    claim: "Rollouts stage a new version behind a feature gate before promoting it"
+    source: "internal/deploy/rollout.go"
+    provenance:
+      origin: inferred

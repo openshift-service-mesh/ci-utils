@@ -1,0 +1,4 @@
+docs_dir: docs/agents
+scenario: "scan-sha shape validation failure"
+invalid_scan_topic: search-indexing
+expected_freshness_unchanged: 55

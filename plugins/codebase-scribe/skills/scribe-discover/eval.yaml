@@ -1,70 +1,155 @@
 name: codebase-scribe-eval
-description: Evaluate scribe-discover for accurate codebase inventory generation
+description: Evaluate scribe-discover for mechanical stub creation from an orchestrator-approved topic list
 skill: codebase-scribe:scribe-discover
 
 execution:
   mode: case
-  arguments: ""
-  timeout: 1800
-  max_budget_usd: 5.0
+  # The orchestrator passes the approved brief in-context; an empty arguments
+  # string left the skill with nothing to act on, so it asked for the topic
+  # list and halted. Rendered from the case's input.yaml so the skill receives
+  # exactly what the orchestrator would hand it.
+  arguments: |
+    docs_dir: {{ input.docs_dir }}
+    topics:
+    {%- for t in input.topics %}
+      - name: {{ t.name }}
+        title: {{ t.title }}
+        watch_paths: {{ t.watch_paths }}
+      {%- if t.migration_source is defined %}
+        migration_source: "{{ t.migration_source }}"
+      {%- endif %}
+      {%- if t.migration_sections is defined %}
+        migration_sections: {{ t.migration_sections }}
+      {%- endif %}
+    {%- endfor %}
+  timeout: 900
+  max_budget_usd: 2.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
   judge: claude-opus-4-6
 
 permissions:
-  allow: []
-  deny: []
+  allow:
+    - Read
+    - Write
+    - Glob
+  deny:
+    - Bash
+    - Grep
 
 mlflow:
   experiment: codebase-scribe-eval
 
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-discover/eval/cases
+  path: eval/cases
+  workspace:
+    # Without this the harness copies only input.yaml, so the distractor
+    # source tree, the AGENTS.md fixture and the pre-existing topic files never
+    # reach the skill — every judge that turns on their presence passes
+    # vacuously. Each entry is a case-relative path copied verbatim, preserving
+    # its name; entries absent from a given case are skipped.
+    files:
+      # The distractor source tree lives at the case root as internal/ (not
+      # under a src/ container), because briefs and watch_paths reference these
+      # files at the repo root — under a nested container the referenced paths
+      # would not exist and a skill checking them would correctly report them
+      # as missing.
+      - internal
+      - AGENTS.md
+      - docs
   schema: |
     Each case directory contains:
-    - input.yaml: YAML file with:
-      * workspace_description: brief description of what kind of codebase the sample represents
-        (e.g., "Go microservice with REST API", "Python ML pipeline", "TypeScript monorepo")
-      * expected_languages: list of programming languages present
-      * expected_frameworks: list of frameworks/libraries expected to be detected
-      * expected_architecture: brief description of expected architecture pattern
-    - src/: sample source code directory structure matching the workspace_description
-      (e.g., main.go, handlers/, models/, Makefile, go.mod for a Go service)
-    - existing_docs/: optional pre-existing documentation files (README.md, CONTRIBUTING.md)
-      that scribe-discover should use to enrich the discovery
-    - annotations.yaml: expected discovery output:
-      * expected_component_count: number of components expected in inventory
-      * expected_entry_points: list of main entry point files
-      * expected_test_framework: test framework name detected from test files
-      * expected_build_system: build system detected (go, make, npm, poetry, etc.)
+    - input.yaml: the orchestrator brief scribe-discover receives — YAML with:
+      * docs_dir: the resolved docs_dir to create stubs in (e.g. "docs/agents")
+      * topics: list of approved topics, each with:
+        - name: kebab-case filename (no extension)
+        - title: heading text
+        - watch_paths: list of directories the topic covers
+        - migration_source: optional filename with existing content (e.g. "AGENTS.md")
+        - migration_sections: optional list of heading strings from migration_source
+    - internal/: optional distractor source code (at the case root) that
+      scribe-discover must NOT read or scan (HARD RULE 3) — its presence lets
+      judges verify no real content leaked into stub bodies
+    - AGENTS.md: optional distractor file (discover must never touch it — HARD RULE 2)
+    - <docs_dir>/<name>.md: optional pre-existing topic file for collision cases —
+      scribe-discover must refuse to overwrite it
+    - annotations.yaml:
+      * brief: the filename of the case's own input.yaml (literally "input.yaml").
+        Stock collection does not copy the input into the collected run directory,
+        so the harness's annotation-reference mechanism is used to surface it:
+        naming a file here loads its text into outputs["annotation_brief_content"],
+        which stub_frontmatter_valid parses for each topic's watch_paths and
+        migration fields. Edit input.yaml and nothing else — this key only names it.
+      * expected_created: list of topic names that should get a new stub file
+      * expected_collisions: list of topic names that already existed and must be
+        left untouched (empty list if none)
+      * expected_docs_dir: the docs_dir stubs should land in (mirrors input.yaml,
+        included so judges don't need to parse input.yaml)
+      * forbidden_leakage_strings: distinctive identifiers from whatever content
+        the case puts in discover's way — the distractor source tree (internal/),
+        AGENTS.md, or
+        (case-004, which ships no internal/ tree) the pre-existing topic file
+        discover refuses to overwrite — that must never appear in a stub body
+      * preexisting_markers: {topic_name: distinctive substring} — for collision
+        cases, a string from the pre-existing file's hand-written content that
+        must still be present (and the fresh-stub placeholder marker must be
+        absent) after the run
+      * preexisting_content: {topic_name: full text of the pre-run fixture} —
+        required for every name in expected_collisions. HARD RULE 5 is an
+        identity assertion, so collision_refusal compares the post-run file
+        against this copy verbatim (line endings normalized) and FAILS when the
+        entry is missing rather than skipping the case. It duplicates the
+        fixture on purpose: edit <docs_dir>/<name>.md and this block in the
+        same commit
+      * preexisting_agents_marker: distinctive substring from the AGENTS.md
+        fixture that must still be present after the run
+      * preexisting_agents_content: full text of the AGENTS.md fixture — the
+        identity half of HARD RULE 2, compared verbatim (line endings
+        normalized) by agents_and_status. Supplying either this key or
+        preexisting_agents_marker also arms the "AGENTS.md must still exist"
+        assertion, so deleting the file fails rather than passing silently.
+        Same deliberate duplication and same same-commit coupling as
+        preexisting_content
 
 outputs:
-  - path: output
-    schema: |
-      Discovery inventory written to .claude/scribe/inventory.yaml.
-      Use outputs["files"] to access generated files.
-      inventory.yaml structure:
-        project:
-          name: string
-          description: string
-          type: string (service|library|tool|monorepo)
-        languages:
-          primary: string
-          secondary: list
-        frameworks: list of {name, purpose, version}
-        architecture:
-          pattern: string
-          description: string
-          components: list of {name, path, type, description}
-        entry_points: list of paths
-        build_system: {name, config_file, commands}
-        test_framework: {name, test_dir, config}
-        key_directories: list of {path, purpose}
-        dependencies: list of {name, version, purpose}
+  # No `path:` entry. The harness hardcodes the workspace's `output/` directory
+  # as its own stdout/stderr trace sink, so declaring it here would pull the run
+  # transcript into outputs["files"] under an `output/` prefix (in addition to
+  # outputs["stdout"]). Discover's files instead reach judges through stock's
+  # changed-files collection: every file the skill creates or modifies appears
+  # in outputs["files"] under a `_modified/` prefix, so the created stubs land
+  # at `_modified/<docs_dir>/<name>.md`, while an untouched fixture (AGENTS.md,
+  # a collision file) is ABSENT — its absence is the proof it was not touched.
+  # The harness still writes its transcript to `output/`, which stock collects
+  # as `_modified/output/stdout.log`; the transcript quotes the stub template,
+  # so no_output_outside_docs_dir excludes that harness sink from its marker
+  # scan. stdout stays available as outputs["stdout"].
+  - schema: |
+      Stub files written to <docs_dir>/<name>.md, one per approved topic, plus a
+      regenerated <docs_dir>/STATUS.md. Use outputs["files"] to access all files
+      in the working tree after the run (both newly created and pre-existing).
+      Stub file shape (frontmatter):
+        scribe:
+          scan: null
+          freshness: 0
+          human_input: 0
+          completeness: 0
+          inferred_sections: []
+          watch_paths: [...]
+          stale_flags: []
+          migration_source: "AGENTS.md"      # only if provided for this topic
+          migration_sections: ["## Section"] # only if provided for this topic
+      Stub file shape (body): `# <Title>`, a routing blockquote, then exactly five
+      `##` sections (Key Entry Points, Patterns & Conventions, Gotchas, Dependencies
+      & Context, Links) each containing a line beginning with the literal stub
+      placeholder marker "*Stub — will be populated by the draft skill.*" (em dash,
+      U+2014).
 
 traces:
   stdout: true
@@ -76,112 +161,385 @@ judges:
   - name: budget_check
     builtin: cost_budget
     arguments:
-      max_cost_usd: 4.0
+      max_cost_usd: 1.5
 
-  - name: inventory_yaml_valid
+  - name: stub_frontmatter_valid
     description: |
-      Validates that inventory.yaml was created with required fields and parseable YAML.
+      Validates that every topic in annotations.expected_created got a stub file
+      with the exact frontmatter shape from HARD RULE 1: scan null, all scores
+      zero, empty inferred_sections and stale_flags, and watch_paths matching the
+      topic's input.
     check: |
-      import yaml
-      files = outputs.get("files", {})
-      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
-      if not inv_keys:
-          return (False, "inventory.yaml not found at .claude/scribe/inventory.yaml")
-      content = files[inv_keys[0]]
-      try:
-          inv = yaml.safe_load(content)
-      except yaml.YAMLError as e:
-          return (False, f"inventory.yaml YAML parse error: {e}")
-      required_keys = ["project", "languages", "architecture"]
-      missing = [k for k in required_keys if k not in inv]
-      if missing:
-          return (False, f"inventory.yaml missing required top-level keys: {missing}")
-      if not inv.get("project", {}).get("name"):
-          return (False, "inventory.yaml project.name is empty")
-      return (True, f"inventory.yaml valid: project={inv['project']['name']}, type={inv['project'].get('type')}")
-
-  - name: languages_detected
-    description: |
-      Verifies that the languages detected in inventory.yaml match those expected
-      from the sample codebase structure.
-    check: |
-      import yaml
+      import yaml, re
       files = outputs.get("files", {})
       annotations = outputs.get("annotations", {})
-      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
-      if not inv_keys:
-          return (True, "inventory.yaml not found — checked by inventory_yaml_valid judge")
-      inv = yaml.safe_load(files[inv_keys[0]])
-      expected_langs = [l.lower() for l in annotations.get("expected_languages", [])]
-      if not expected_langs:
-          return (True, "No expected_languages annotation — skipping language check")
-      detected = [inv.get("languages", {}).get("primary", "").lower()]
-      detected += [l.lower() for l in inv.get("languages", {}).get("secondary", [])]
-      detected = [d for d in detected if d]
-      missing_langs = [l for l in expected_langs if not any(l in d for d in detected)]
-      if missing_langs:
-          return (False, f"Expected languages not detected: {missing_langs} (detected: {detected})")
-      return (True, f"All expected languages detected: {detected}")
+      # The brief is the case's own input.yaml. Under stock collection the run
+      # directory (outputs["case_dir"]) holds only changed/created files under a
+      # _modified/ prefix — never the input — so the brief is surfaced through
+      # the annotation-reference mechanism: annotations names `brief: input.yaml`,
+      # and the harness loads that file's text into
+      # outputs["annotation_brief_content"]. outputs["inputs"] carries the same
+      # content but as pre-rendered markdown rather than structured data.
+      arguments = {}
+      brief_text = outputs.get("annotation_brief_content")
+      if brief_text:
+          arguments = yaml.safe_load(brief_text) or {}
+      docs_dir = annotations.get("expected_docs_dir", "docs/agents")
+      expected_created = annotations.get("expected_created", [])
+      # Fail loudly rather than open. The watch_paths-fidelity and
+      # migration-field assertions below are the only two judges in this suite
+      # covering HARD RULE 1 on those fields; when `arguments.topics` is
+      # unavailable both used to evaporate behind a truthiness gate while this
+      # judge still returned True — a green run proving nothing.
+      raw_topics = arguments.get("topics")
+      if expected_created and not raw_topics:
+          return (False, "the case brief is unavailable, so the watch_paths-fidelity and migration-field assertions cannot be evaluated at all — check that annotations names `brief: input.yaml` so the harness loads it into outputs['annotation_brief_content']")
+      topics = {t["name"]: t for t in (raw_topics or [])}
+      problems = []
+      for name in expected_created:
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{name}.md")), None)
+          if not key:
+              problems.append(f"{name}.md not found under {docs_dir}/")
+              continue
+          content = files[key]
+          fm_match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL)
+          if not fm_match:
+              problems.append(f"{name}.md has no YAML frontmatter block")
+              continue
+          fm = yaml.safe_load(fm_match.group(1))
+          scribe = fm.get("scribe", fm)
+          if scribe.get("scan") is not None:
+              problems.append(f"{name}.md: scan is not null")
+          for score_key in ("freshness", "human_input", "completeness"):
+              if scribe.get(score_key) != 0:
+                  problems.append(f"{name}.md: {score_key} is not 0")
+          # Required-and-empty, not merely not-non-empty. The earlier form
+          # accepted an ABSENT key, because .get() returned None and None is in
+          # the ([], None) tolerance — so a stub missing both keys outright
+          # satisfied a judge whose whole subject is "the exact frontmatter
+          # shape from HARD RULE 1".
+          for empty_key in ("inferred_sections", "stale_flags"):
+              if empty_key not in scribe:
+                  problems.append(f"{name}.md: {empty_key} is absent — HARD RULE 1 requires the key present and empty")
+              elif scribe[empty_key] != []:
+                  problems.append(f"{name}.md: {empty_key} is {scribe[empty_key]!r}, expected []")
+          topic_def = topics.get(name)
+          if topic_def is None:
+              problems.append(f"{name} is in expected_created but absent from arguments.topics — HARD RULE 1's watch_paths and migration-field assertions cannot be made for it")
+              continue
+          if "watch_paths" not in topic_def:
+              problems.append(f"{name}: the arguments.topics entry carries no watch_paths, so HARD RULE 1's fidelity assertion cannot be made")
+          elif scribe.get("watch_paths") != topic_def["watch_paths"]:
+              problems.append(f"{name}.md: watch_paths {scribe.get('watch_paths')} != expected {topic_def['watch_paths']}")
+          # Both migration fields, both directions. migration_sections carries the
+          # section selectors the draft skill later resolves; it was never
+          # compared, so the active migration case passed while dropping every
+          # one of them. The absent-input direction matters too: a stub that
+          # invents a migration field the brief never supplied is fabricating
+          # provenance, which the "carried verbatim" contract forbids.
+          for mig_key in ("migration_source", "migration_sections"):
+              expected_mig = topic_def.get(mig_key)
+              actual_mig = scribe.get(mig_key)
+              if expected_mig is None:
+                  if mig_key in scribe and actual_mig is not None:
+                      problems.append(f"{name}.md: {mig_key}={actual_mig!r} but the input supplied none — discover must not invent migration fields")
+              elif actual_mig != expected_mig:
+                  problems.append(f"{name}.md: {mig_key}={actual_mig!r} != expected {expected_mig!r}")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, f"Frontmatter valid for {len(expected_created)} stub(s)")
 
-  - name: components_enumerated
+  - name: stub_skeleton_complete
     description: |
-      Checks that the architecture.components list is non-empty and that component
-      count is in a reasonable range relative to the codebase size.
+      Validates the body of each new stub: TL;DR blockquote first, then exactly
+      the five required ## sections each with the literal stub placeholder marker.
     check: |
-      import yaml
+      import re
       files = outputs.get("files", {})
       annotations = outputs.get("annotations", {})
-      inv_keys = [k for k in files if k.endswith("scribe/inventory.yaml")]
-      if not inv_keys:
-          return (True, "inventory.yaml not found — checked by inventory_yaml_valid judge")
-      inv = yaml.safe_load(files[inv_keys[0]])
-      components = inv.get("architecture", {}).get("components", [])
-      if not components:
-          return (False, "architecture.components is empty — no components discovered")
-      expected_count = annotations.get("expected_component_count", 1)
-      if len(components) < expected_count:
-          return (0.5, f"Only {len(components)} components found, expected ~{expected_count}")
-      return (True, f"{len(components)} components enumerated in architecture")
+      docs_dir = annotations.get("expected_docs_dir", "docs/agents")
+      expected_created = annotations.get("expected_created", [])
+      required_sections = ["Key Entry Points", "Patterns & Conventions", "Gotchas", "Dependencies & Context", "Links"]
+      # The complete literal, not its prefix. Asserting only "*Stub — will be
+      # populated" left everything after the prefix unconstrained, so an altered
+      # instruction ("*Stub — will be populated incorrectly.*") satisfied a judge
+      # whose subject is the exact stub template.
+      marker = "*Stub — will be populated by the draft skill.*"
+      problems = []
+      for name in expected_created:
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{name}.md")), None)
+          if not key:
+              continue
+          content = files[key]
+          body = content.split("---", 2)[-1] if content.startswith("---") else content
+          if not re.search(r'^#\s+.+\n+>\s', body.lstrip(), re.MULTILINE):
+              problems.append(f"{name}.md: missing TL;DR blockquote after H1")
+          headings = re.findall(r'^##\s+(.+)$', body, re.MULTILINE)
+          if headings != required_sections:
+              problems.append(f"{name}.md: sections {headings} != {required_sections}")
+          for section in required_sections:
+              sec_match = re.search(rf'^##\s+{re.escape(section)}\s*\n(.*?)(?=^##|\Z)', body, re.MULTILINE | re.DOTALL)
+              if not sec_match or marker not in sec_match.group(1):
+                  problems.append(f"{name}.md: section '{section}' missing stub placeholder marker")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, f"Skeleton complete for {len(expected_created)} stub(s)")
 
-  - name: discovery_accuracy
+  - name: no_codebase_leakage
     description: |
-      LLM evaluates whether the inventory accurately describes the provided sample codebase,
-      with correct architecture pattern, component descriptions, and build system details.
+      HARD RULE 3 (do not scan the codebase) and HARD RULE 1 (zero real content) —
+      verifies NEWLY CREATED stub bodies contain none of the distractor
+      internal/ fixture's distinctive identifiers, proving discover did not read the
+      codebase to invent content. Scoped to expected_created only — a pre-existing
+      collision fixture may legitimately contain these strings itself.
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      forbidden = annotations.get("forbidden_leakage_strings", [])
+      if not forbidden:
+          return (True, "No distractor identifiers configured for this case")
+      docs_dir = annotations.get("expected_docs_dir", "docs/agents")
+      leaked = []
+      for name in annotations.get("expected_created", []):
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{name}.md")), None)
+          if not key:
+              continue
+          content = files[key]
+          for term in forbidden:
+              if term in content:
+                  leaked.append(f"{term} found in {key}")
+      if leaked:
+          return (False, "; ".join(leaked))
+      return (True, "No distractor codebase content leaked into newly created stub files")
+
+  - name: collision_refusal
+    description: |
+      HARD RULE 5 — a topic file that already exists must be left untouched: the
+      post-run file is compared for identity against its pre-run fixture, and the
+      fresh-stub placeholder marker must be absent; discover must still create
+      the rest of the batch.
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("expected_docs_dir", "docs/agents")
+      collisions = annotations.get("expected_collisions", [])
+      preexisting_markers = annotations.get("preexisting_markers", {})
+      preexisting_content = annotations.get("preexisting_content", {}) or {}
+      if not collisions:
+          return (True, "No collision scenario in this case")
+      problems = []
+      stub_marker = "*Stub — will be populated by the draft skill.*"
+      def lf(text):
+          return text.replace("\r\n", "\n").replace("\r", "\n")
+      for name in collisions:
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{name}.md")), None)
+          # Missing fixture content fails loudly rather than skipping: a silently
+          # unasserted collision case is a green run proving nothing.
+          expected = preexisting_content.get(name)
+          if not key:
+              # Stock collection surfaces a workspace file only when the skill
+              # changed or created it, so a collision fixture discover correctly
+              # left untouched is ABSENT — and that absence is the strongest
+              # possible proof it was neither overwritten nor appended to (HARD
+              # RULE 5). This is not vacuous: had discover written the file at
+              # all it would be present and fall to the identity check below.
+              if expected is None:
+                  problems.append(f"{name} is in expected_collisions but annotations.preexisting_content has no entry for it, so the case asserts nothing")
+              continue
+          # Present in the changed set ⇒ discover wrote to a file HARD RULE 5
+          # forbids it to touch at all. "Left untouched" is an identity
+          # assertion, not marker survival — the marker check alone passed a run
+          # that rewrote the file or appended content below the preserved
+          # substring.
+          content = files[key]
+          marker = preexisting_markers.get(name)
+          if marker and marker not in content:
+              problems.append(f"{name}.md lost its pre-existing content marker — was it overwritten?")
+          if stub_marker in content:
+              problems.append(f"{name}.md was replaced with a fresh stub despite colliding")
+          if expected is None:
+              problems.append(f"{name} is in expected_collisions but annotations.preexisting_content has no entry for it, so the identity assertion cannot be made")
+          elif lf(content) != lf(expected):
+              problems.append(f"{name}.md appears in the changed set and is not identical to its pre-run fixture (line endings normalized) — HARD RULE 5 admits no modification")
+      created = annotations.get("expected_created", [])
+      for name in created:
+          key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/{name}.md")), None)
+          if not key:
+              problems.append(f"{name}.md not created despite not colliding")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, f"Collision(s) {collisions} preserved untouched; rest of batch created")
+
+  - name: agents_and_status
+    description: |
+      HARD RULE 2 (never touch AGENTS.md) and the after-stubs duty (regenerate
+      STATUS.md listing every created topic at 0%).
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("expected_docs_dir", "docs/agents")
+      problems = []
+      def lf(text):
+          return text.replace("\r\n", "\n").replace("\r", "\n")
+
+      agents_key = next((k for k in files if k.replace("\\", "/").endswith("AGENTS.md")), None)
+      agents_marker = annotations.get("preexisting_agents_marker")
+      agents_expected = annotations.get("preexisting_agents_content")
+      # HARD RULE 2 is "never touch AGENTS.md". Under stock collection a
+      # workspace file appears in outputs["files"] only when the skill changed or
+      # created it, so an untouched AGENTS.md is ABSENT — and its absence is the
+      # proof discover left it alone (the strong assertion: presence would mean
+      # modification). Presence in the changed set is itself the violation; the
+      # marker/identity checks then report how it was touched.
+      if agents_marker is not None or agents_expected is not None:
+          if agents_key:
+              actual_agents = files[agents_key]
+              if agents_marker is not None and agents_marker not in actual_agents:
+                  problems.append("AGENTS.md appears in the changed set and lost its pre-existing content marker — discover must never touch it")
+              elif agents_expected is not None and lf(actual_agents) != lf(agents_expected):
+                  problems.append("AGENTS.md appears in the changed set and is not identical to its pre-run fixture (line endings normalized) — HARD RULE 2 admits no modification, including content appended below the preserved marker")
+              else:
+                  problems.append("AGENTS.md appears in the changed set — discover wrote to it, and HARD RULE 2 forbids touching it at all")
+      status_key = next((k for k in files if k.replace("\\", "/").endswith(f"{docs_dir}/STATUS.md")), None)
+      if not status_key:
+          problems.append("STATUS.md was not created")
+      else:
+          status = files[status_key]
+          for name in annotations.get("expected_created", []):
+              if name not in status:
+                  problems.append(f"STATUS.md does not list topic '{name}'")
+          if "0%" not in status and "0 " not in status:
+              problems.append("STATUS.md does not show 0% scores for new stubs")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, "AGENTS.md untouched and STATUS.md correctly regenerated")
+
+  - name: no_output_outside_docs_dir
+    description: |
+      The negative half of §5 docs_dir threading. The path-lookup judges above
+      only prove the expected files ARE under the configured docs_dir; a
+      regression that writes them correctly there AND also drops stubs at the
+      default `docs/agents` satisfies every one of them. This judge requires
+      every created topic file, the regenerated STATUS.md, and any file carrying
+      the fresh-stub marker to sit beneath annotations.expected_docs_dir,
+      anchored at the case root — so a duplicate under `decoy/docs/ai/` fails
+      rather than satisfying a "contains the directory somewhere" test.
+    check: |
+      files = outputs.get("files", {})
+      annotations = outputs.get("annotations", {})
+      docs_dir = annotations.get("expected_docs_dir", "docs/agents").rstrip("/")
+      marker = "*Stub — will be populated by the draft skill.*"
+      def norm(key):
+          return key.replace("\\", "/")
+      def segs(key):
+          return [s for s in norm(key).split("/") if s]
+      dd = [s for s in docs_dir.split("/") if s]
+      # Keys may arrive absolute or repo-relative, so the case root is derived
+      # rather than assumed: the longest run of leading path segments common to
+      # every output file. Anything else lets a substring match stand in for a
+      # boundary — "contains /docs/ai/" accepted `decoy/docs/ai/cfg.md`, which is
+      # precisely the duplicate-output regression this judge exists to catch.
+      all_segs = [segs(k) for k in files]
+      root = []
+      if all_segs:
+          for i, s in enumerate(all_segs[0]):
+              if all(len(a) > i and a[i] == s for a in all_segs):
+                  root.append(s)
+              else:
+                  break
+      # A case whose every output happens to sit under docs_dir would otherwise
+      # anchor the root inside it and accept everything; trim the root back to
+      # just before docs_dir starts.
+      for i in range(len(root) - len(dd) + 1):
+          if root[i:i + len(dd)] == dd:
+              root = root[:i]
+              break
+      def under_docs_dir(key):
+          s = segs(key)
+          return s[:len(root)] == root and s[len(root):len(root) + len(dd)] == dd
+      def is_harness_sink(key):
+          # The harness writes its own stdout/stderr transcript to the workspace
+          # `output/` directory; stock collects it as `_modified/output/stdout.log`
+          # (and .../stderr.log). It is not skill output and it quotes the stub
+          # template verbatim, so it must never count as "stub content written
+          # outside docs_dir". Strip the leading `_modified/` collection prefix,
+          # then anything under `output/` is the harness sink.
+          s = segs(key)
+          if s and s[0] == "_modified":
+              s = s[1:]
+          return bool(s) and s[0] == "output"
+      def named(basename):
+          return [k for k in files if norm(k) == basename or norm(k).endswith("/" + basename)]
+      problems = []
+      for name in annotations.get("expected_created", []):
+          stray = [k for k in named(f"{name}.md") if not under_docs_dir(k)]
+          if stray:
+              problems.append(f"{name}.md also written outside {docs_dir}: {stray}")
+      stray_status = [k for k in named("STATUS.md") if not under_docs_dir(k)]
+      if stray_status:
+          problems.append(f"STATUS.md written outside {docs_dir}: {stray_status}")
+      stray_marker = [k for k, v in files.items()
+                      if isinstance(v, str) and marker in v
+                      and not is_harness_sink(k) and not under_docs_dir(k)]
+      if stray_marker:
+          problems.append(f"fresh stub content written outside {docs_dir}: {stray_marker}")
+      if problems:
+          return (False, "; ".join(problems))
+      return (True, f"No topic output written outside {docs_dir}")
+
+  - name: stub_contract_quality
+    description: |
+      LLM evaluates overall adherence to the §5 stub contract: correct docs_dir
+      usage, no invented content, correct handling of migration fields, and (for
+      collision cases) a clear report of which names collided back to the caller.
     prompt: |
-      Evaluate how accurately this inventory.yaml describes the sample codebase.
+      Evaluate this scribe-discover run against its contract.
 
-      Generated inventory:
+      The brief discover was given (the case's input.yaml):
+      {{ inputs }}
+
+      Full transcript and outputs:
+      {{ conversation }}
+
       {{ outputs }}
 
-      Sample codebase workspace_description: {{ arguments.workspace_description }}
-      Expected frameworks: {{ arguments.expected_frameworks }}
-
       Assess:
-      1. Does the architecture.pattern match the described codebase type?
-      2. Are component descriptions specific and accurate (not generic placeholders)?
-      3. Is the build_system correctly identified from actual config files?
-      4. Are entry_points the real main files (not README or config files)?
-      5. Is the test_framework correctly detected from test file patterns?
+      1. Did discover create files ONLY inside the given docs_dir, never elsewhere?
+      2. Is every stub's content purely mechanical template text — no invented
+         project-specific prose, no evidence of reading source code?
+      3. For topics with migration_source/migration_sections, are those fields
+         carried into frontmatter verbatim (not resolved, not summarized)?
+      4. If any topic collided with an existing file, did discover clearly report
+         the colliding name(s) back rather than silently skipping or overwriting?
+      5. Was STATUS.md regenerated showing all topics as stubs at 0%?
 
       Score 1-5:
-      1: Mostly wrong — wrong architecture, generic descriptions, undetected frameworks
-      2: Some correct detection but major gaps or misidentifications
-      3: Core detection correct but missing frameworks or inaccurate descriptions
-      4: Good accuracy with minor gaps in framework/dependency detection
-      5: Accurate and complete — architecture, components, build, tests all correct
-
-    arguments:
-      workspace_description: "{{ arguments.workspace_description }}"
-      expected_frameworks: "{{ arguments.expected_frameworks }}"
+      1: Wrote outside docs_dir, invented content, or overwrote a collision
+      2: Mostly mechanical but leaked real content or mishandled a collision silently
+      3: Correct stubs but missing/incorrect migration fields or STATUS.md
+      4: Fully correct with a minor reporting gap
+      5: Exactly matches the §5 contract — mechanical, scoped, collision-safe
 
 thresholds:
+# This suite has 5 cases, so any min_pass_rate above 0.8 already requires 5/5:
+# 0.9 was arithmetically identical to 1.0 and only read as tolerance for one
+# flaky case. Stated as 1.0 honestly rather than lowered to 0.8 — several cases
+# turn on a single deliberately-constructed discriminating assertion, and
+# admitting one failure would let exactly those regress silently. (The figure
+# speaks for this suite only: sibling suites size their own thresholds.)
   budget_check:
     min_pass_rate: 1.0
-  inventory_yaml_valid:
+  stub_frontmatter_valid:
     min_pass_rate: 1.0
-  languages_detected:
-    min_pass_rate: 0.9
-  components_enumerated:
-    min_pass_rate: 0.9
-  discovery_accuracy:
-    min_mean: 3.5
+  stub_skeleton_complete:
+    min_pass_rate: 1.0
+  no_codebase_leakage:
+    min_pass_rate: 1.0
+  collision_refusal:
+    min_pass_rate: 1.0
+  agents_and_status:
+    min_pass_rate: 1.0
+  no_output_outside_docs_dir:
+    min_pass_rate: 1.0
+  stub_contract_quality:
+    min_mean: 4.0

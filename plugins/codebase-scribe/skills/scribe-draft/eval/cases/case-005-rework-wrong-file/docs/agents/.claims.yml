@@ -1,0 +1,21 @@
+_meta:
+  cache-layer_extracted_at: "4444dddd5555eeee6666ffff7777aaaa8888bbbb"
+
+claims:
+  - id: cache-layer-1
+    type: pattern
+    topic: cache-layer
+    claim: "Cache is populated by informers in NewKubeCache in cache/kube_cache.go"
+    source: "cache/kube_cache.go"
+    provenance:
+      origin: inferred
+
+  - id: cache-layer-2
+    type: boundary
+    topic: cache-layer
+    claim: "Cache has no RBAC filtering of its own"
+    source: "cache/informer_cache.go"
+    provenance:
+      origin: user
+      context: "Callers must not assume per-request authorization; anything the service account can list is readable through the cache."
+      recorded: "2026-03-15"

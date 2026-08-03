@@ -1,6 +1,0 @@
-workspace_description: "Go CLI tool using cobra for command parsing"
-expected_languages:
-  - go
-expected_frameworks:
-  - cobra
-expected_architecture: "CLI tool"

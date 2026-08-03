@@ -1,0 +1,15 @@
+docs_dir: docs/agents
+scenario: "shallow clone gate"
+is_shallow_case: true
+expected_freshness_unchanged_by_topic:
+  billing: 70
+  notifications: 85
+expect_shallow_warning: true
+# billing.md's `## Charging` cites exactly one file, internal/billing/legacy_charge.go,
+# which is absent from src/ — a 100% broken-reference ratio, well over §9's 60%
+# threshold. §9 escalation is downstream of §3's rename resolution, which the
+# shallow gate skips, so a gate-respecting run reports the broken reference and
+# does NOT escalate. A run that ignores the gate escalates here.
+expect_no_escalation: true
+expected_broken_ref_not_flagged_deleted:
+  billing: "legacy_charge.go"

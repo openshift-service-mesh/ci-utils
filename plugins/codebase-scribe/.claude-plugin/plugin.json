@@ -1,6 +1,6 @@
 {
   "name": "codebase-scribe",
-  "version": "1.2.6",
+  "version": "1.4.0",
   "description": "Generate, enrich, and maintain agentic development documentation for any codebase. Produces AGENTS.md + topic files with progressive disclosure, drift detection, and SME-directed enrichment.",
   "author": { "name": "OSSM Team" },
   "repository": "https://github.com/openshift-service-mesh/ci-utils",

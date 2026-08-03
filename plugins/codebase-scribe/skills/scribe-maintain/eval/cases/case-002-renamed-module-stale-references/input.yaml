@@ -1,5 +1,0 @@
-change_type: "renamed_module"
-sections_expected_to_change:
-  - "Architecture"
-sections_expected_unchanged:
-  - "Development Guide"

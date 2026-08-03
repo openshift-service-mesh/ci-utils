@@ -1,0 +1,37 @@
+docs_dir: docs/agents
+scenario: "quality checks, stub tier — a stub topic missing one of its five skeleton sections (`Links`) must have that gap reported, never silently added"
+quality_checks:
+  topic: release-process
+
+  # Asserted against the §13 summary's "Quality issues" entry only — not the
+  # whole transcript. One topic in this case, so every finding in that list is
+  # a finding about release-process; no attribution needed.
+  expect_reported:
+    - label: "missing `## Links` skeleton section on a stub topic"
+      any_of: ["Links"]
+
+  # Nothing is forbidden here, deliberately. This case has a legitimate
+  # missing-skeleton-section finding, and a run reporting it may reasonably
+  # name the four sections that ARE present in the same breath ("missing
+  # `Links`; the other four are there"). The architecture negative — that a
+  # MATURE topic is never held to the 5-section skeleton — therefore lives in
+  # case-006, whose topic has no missing-skeleton finding for such an
+  # enumeration to hang off. Do not add `expect_absent` entries here.
+  expect_absent: []
+
+  fixture_premise:
+    # `Links` absent from the OUTPUT file carries two things at once: the gap
+    # the case seeds still exists, and maintain flagged it rather than adding
+    # it (§7: "do not auto-add — maintain never adds content").
+    must_not_have_headings: ["Links"]
+    # The four skeleton sections the stub does have. If one were deleted, the
+    # case would seed two missing-section findings instead of one and the
+    # `Links` positive would stop being the discriminator it is meant to be.
+    must_have_headings:
+      - "Key Entry Points"
+      - "Patterns & Conventions"
+      - "Gotchas"
+      - "Dependencies & Context"
+    # With the blockquote deleted, a missing-TL;DR finding would become
+    # legitimate here too, muddying the single-finding shape.
+    must_have_tldr_blockquote: true

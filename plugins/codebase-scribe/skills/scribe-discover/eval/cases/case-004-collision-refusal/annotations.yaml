@@ -1,0 +1,46 @@
+brief: input.yaml
+expected_docs_dir: docs/agents
+expected_created:
+  - backend-architecture
+  - data-access
+expected_collisions:
+  - build-deploy
+preexisting_markers:
+  build-deploy: "OrbitalCacheWarmer note: this file already exists"
+forbidden_leakage_strings:
+  - OrbitalCacheWarmer
+# HARD RULE 5 is "never overwrite an existing topic file", so this is an
+# identity assertion, not marker survival: the colliding file must still be
+# byte-for-byte its pre-run fixture (line endings normalized). Marker survival
+# alone passed a run that appended arbitrary content below the marker. If you
+# edit docs/agents/build-deploy.md, update this block in the same commit — that
+# coupling is deliberate.
+preexisting_content:
+  build-deploy: |
+    ---
+    scribe:
+      scan: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+      freshness: 100
+      human_input: 0
+      completeness: 80
+      inferred_sections:
+        - id: key-entry-points
+          heading: "## Key Entry Points"
+        - id: patterns--conventions
+          heading: "## Patterns & Conventions"
+      watch_paths: ["deploy/", "Makefile"]
+      stale_flags: []
+    ---
+
+    # Build & Deploy
+
+    > OrbitalCacheWarmer note: this file already exists from a prior draft run.
+    > scribe-discover must refuse to overwrite it and report the collision back
+    > to the orchestrator rather than silently replacing this content.
+
+    ## Key Entry Points
+    - `Makefile`: defines `build`, `test`, and `deploy` targets
+    - `deploy/pipeline.yaml`: CI pipeline definition
+
+    ## Patterns & Conventions
+    Deploys go through the `deploy` target only; direct `docker push` is not used.

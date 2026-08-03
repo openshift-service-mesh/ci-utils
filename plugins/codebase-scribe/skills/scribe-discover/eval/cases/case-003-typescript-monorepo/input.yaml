@@ -1,7 +1,0 @@
-workspace_description: "TypeScript monorepo with frontend React app and backend Express API"
-expected_languages:
-  - typescript
-expected_frameworks:
-  - react
-  - express
-expected_architecture: "monorepo"

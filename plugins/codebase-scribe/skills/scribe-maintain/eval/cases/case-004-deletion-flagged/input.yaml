@@ -1,0 +1,34 @@
+topics:
+  - name: user-profiles
+    title: User Profiles
+    tier: mature
+    # Step 5 row 5: `scan` is null and the body is not a stub — `undercooked`.
+    classification: undercooked
+    scan: null
+    freshness: 88
+    human_input: 15
+    completeness: 75
+    inferred_sections:
+      - id: overview
+        heading: "## Overview"
+      - id: media-handling
+        heading: "## Media Handling"
+      - id: export
+        heading: "## Export"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/profile/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# scan is deliberately null: §3 Reference Validation's basic existence check
+# (ls/grep against current source) does not depend on scan resolving to a
+# real commit. This case makes no claim about a rename — the reference is
+# simply and unambiguously absent from the current source tree. Rename
+# resolution via `git log --diff-filter=R` is NOT exercised anywhere in this
+# suite (see eval.md's Deliberately Uncovered section).

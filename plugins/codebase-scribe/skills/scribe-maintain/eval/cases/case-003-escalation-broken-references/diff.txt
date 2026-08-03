@@ -1,0 +1,24 @@
+This case does NOT depend on any git diff or a resolvable `scan` SHA — `scan`
+is deliberately `null`. §9 Escalation is driven entirely by §3 Reference
+Validation's plain existence check (ls/grep against the current source tree),
+independent of scan resolution or git history.
+
+Of the 4 items the "Template Pipeline" section references:
+  - LoadTemplateSet (internal/notifytemplates/loader.go)   — file absent
+  - ValidateTemplate (internal/notifytemplates/validate.go) — file absent
+  - CacheTemplates (internal/notifytemplates/cache.go)      — file absent
+  - RenderTemplate (internal/notifytemplates/render.go)     — present
+
+3 of 4 = 75% broken references in this one section — comfortably clears §9's
+"60%+ of its referenced files no longer existing" escalation threshold, with
+margin so an implementation reading the threshold as a strict `>` (rather
+than `>=`) still escalates (an earlier revision of this case sat exactly on
+the 60% boundary at 3-of-5, which was needlessly fragile). No claim is made
+about whether these three were renamed or deleted (that distinction requires
+real git history this suite cannot provision — see eval.md's Deliberately
+Uncovered section); they are simply absent from the current source tree.
+
+`src/internal/notifytemplates/purge.go` exists on disk but is no longer
+referenced by the topic (dropped when this case moved off the 60% boundary);
+its presence is inert and does not affect the escalation ratio above, which
+counts only referenced items.

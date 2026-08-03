@@ -1,0 +1,18 @@
+_meta:
+  user-profiles_extracted_at: "unknown"
+
+claims:
+  - id: user-profiles-1
+    type: pattern
+    topic: user-profiles
+    claim: "UploadAvatar resizes uploads to three thumbnail sizes"
+    source: "internal/profile/avatar_upload.go"
+    provenance:
+      origin: inferred
+  - id: user-profiles-2
+    type: data_flow
+    topic: user-profiles
+    claim: "ExportProfile produces a JSON dump for data-portability requests"
+    source: "internal/profile/legacy_export.go"
+    provenance:
+      origin: inferred

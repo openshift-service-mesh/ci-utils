@@ -1,0 +1,21 @@
+_meta:
+  data-retention_extracted_at: "2222bbbb3333cccc4444dddd5555eeee6666ffff"
+
+claims:
+  - id: data-retention-1
+    type: pattern
+    topic: data-retention
+    claim: "Purging runs as a scheduled job rather than inline on write"
+    source: "internal/retention/job.go"
+    provenance:
+      origin: inferred
+
+  - id: data-retention-3
+    type: constraint
+    topic: data-retention
+    claim: "Retention window is a fixed 90 days for GDPR compliance headroom"
+    source: "internal/retention/policy.go"
+    provenance:
+      origin: user
+      context: "Legal asked for a fixed, auditable window rather than a per-tenant configurable one, to simplify the compliance story."
+      recorded: "2026-03-01"

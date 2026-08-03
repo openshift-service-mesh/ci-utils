@@ -1,7 +1,0 @@
-workspace_description: "Go REST API with JWT authentication and crypto"
-expected_languages:
-  - go
-expected_frameworks:
-  - gin
-  - jwt-go
-expected_architecture: "REST microservice with auth layer"

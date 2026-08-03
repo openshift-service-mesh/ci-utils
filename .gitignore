@@ -34,3 +34,4 @@ go.work.sum
 # Eval run artifacts (generated, can be regenerated from eval.yaml + cases)
 eval/runs/
 tmp/
+__pycache__/

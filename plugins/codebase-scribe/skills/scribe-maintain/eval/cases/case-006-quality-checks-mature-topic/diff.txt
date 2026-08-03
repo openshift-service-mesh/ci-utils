@@ -1,0 +1,25 @@
+This case does NOT depend on any git diff or a resolvable `scan` SHA — the
+topic uses `scan: null`. §7 Quality Checks are purely textual/structural.
+
+The single topic is mature: `deployment-guide.md` has a non-empty body and no
+stub marker, and uses free-form headings (`Overview`, `Rollout Philosophy`,
+`Links`). It seeds two legitimate quality findings and one forbidden family:
+
+- No TL;DR blockquote follows its `#` heading — §7's structural validation
+  flags a missing TL;DR on ANY topic, mature or stub, so this must be
+  reported (and not auto-added).
+- `## Rollout Philosophy` is 6 lines of prose with zero file paths, commands
+  or function names — §7's actionability check must flag it. `## Overview`,
+  by contrast, cites `internal/deploy/rollout.go` and `RolloutManager`, so a
+  run that flags every section indiscriminately fails the case too.
+- The four skeleton headings `Key Entry Points`, `Patterns & Conventions`,
+  `Gotchas` and `Dependencies & Context` are all absent, and must stay
+  absent from the run's quality findings: post-wave-1 the 5-section skeleton
+  is stub-only (§1's two-tier structure), so a mature topic using free-form
+  headings is exempt. A pre-improvement implementation, which demanded all
+  five headings on every topic, would report all four and fail here. This is
+  the assertion that tells the two architectures apart; the stub half of §7
+  lives in case-005.
+
+`## Links` is present, so §7's mature-topic "advisory note for a missing
+`## Links` section" is not triggered either.

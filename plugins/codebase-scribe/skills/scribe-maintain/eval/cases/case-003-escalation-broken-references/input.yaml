@@ -1,0 +1,35 @@
+topics:
+  - name: notification-templates
+    title: Notification Templates
+    tier: mature
+    # Step 5 row 5: `scan` is null and the body is not a stub — `undercooked`.
+    # §9 escalation is downstream of §3's existence check, which runs for every
+    # classification, so nothing here depends on the value beyond it not being
+    # `current`.
+    classification: undercooked
+    scan: null
+    freshness: 90
+    human_input: 0
+    completeness: 70
+    inferred_sections:
+      - id: overview
+        heading: "## Overview"
+      - id: template-pipeline
+        heading: "## Template Pipeline"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/notifytemplates/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# scan is deliberately null here: §9 Escalation is driven entirely by §3's
+# plain existence check (ls/grep against current source), never by a
+# resolved git diff, so this case does not depend on scan resolving to a
+# real commit — see scribe-maintain/eval.md's Deliberately Uncovered section
+# for why churn-ratio-driven drift rows and rename resolution are NOT
+# exercised anywhere in this suite.

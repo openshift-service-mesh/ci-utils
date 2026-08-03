@@ -1,0 +1,30 @@
+topics:
+  - name: deployment-guide
+    title: Deployment Guide
+    tier: mature
+    # Step 5 row 5: `scan` is null and the body is not a stub — `undercooked`.
+    # (Row 6 `unverified` never reaches it: human_input is 10, not 0.)
+    classification: undercooked
+    scan: null
+    freshness: 95
+    human_input: 10
+    completeness: 60
+    inferred_sections:
+      - id: overview
+        heading: "## Overview"
+      - id: rollout-philosophy
+        heading: "## Rollout Philosophy"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/deploy/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
+# `scan: null` deliberately — §7 Quality Checks (structural validation and the
+# actionability check) are purely textual/structural: they read the topic body
+# directly and never depend on a resolved git diff.

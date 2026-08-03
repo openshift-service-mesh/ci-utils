@@ -1,0 +1,38 @@
+topic_name: rate-limiter
+docs_dir: docs/agents
+watch_paths: ["internal/ratelimit/"]
+source_files:
+  - internal/ratelimit/limiter.go
+claims:
+  - id: rate-limiter-1
+    type: pattern
+    topic: rate-limiter
+    claim: "Requests are throttled with a token-bucket algorithm, refilled at a fixed rate"
+    source: "internal/ratelimit/limiter.go"
+    provenance:
+      origin: inferred
+change_classification: new_draft
+change_summary: "Initial draft of the rate-limiter topic."
+topic_content: |
+  # Rate Limiter
+
+  > This doc covers request throttling under `internal/ratelimit/`.
+
+  ## Overview
+
+  Requests are throttled with a token-bucket algorithm. `Limiter.Allow` in
+  `internal/ratelimit/limiter.go` checks and decrements the bucket for the
+  caller's key. `NewLimiter` in the same file creates a `time.Ticker` and
+  starts `Limiter.refillLoop`, which calls `Limiter.refill` on every tick to
+  top all buckets back up to `max` at a fixed interval.
+
+  ## Gotchas
+
+  `Limiter.buckets` in `internal/ratelimit/limiter.go` is a plain in-process
+  map, so a horizontally scaled deployment gets one bucket per `NewLimiter`
+  call — one per instance — not a shared global limit.
+
+  ## Links
+  - [`internal/ratelimit/limiter.go`](../../internal/ratelimit/limiter.go) —
+    `Limiter`, `NewLimiter`, `Limiter.Allow`, and the `Limiter.refillLoop`
+    refill loop described above.

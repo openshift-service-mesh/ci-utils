@@ -1,3 +1,21 @@
-expected_staleness_detected: true
-expected_stale_section_count: 3
-expected_recommendation_type: "full_redraft"
+scenario: "severely stale — wrong-file + missing-ref + deprecated across 3 of 4 content sections"
+expected_verdict: REWORK_NEEDED
+expected_critical_tags:
+  - WRONG_FILE
+  - MISSING_REF
+  - DEPRECATED
+expected_evidence_contains:
+  - "orders/create.go"
+# Either recommendation line is accepted. The agent's rules put the choice on a
+# severity judgment — "targeted" when the structure is sound and only specific
+# sections need correction, "full redraft" when repair would leave gaps — and
+# this fixture is three structurally sound sections carrying one mechanical
+# error each (a wrong file attribution, a fabricated reference, a deprecated
+# symbol). That reading legitimately supports "targeted", so pinning the single
+# full_redraft line failed a protocol-compliant report at min_pass_rate 1.0.
+# What actually discriminates this case from a healthy topic — REWORK_NEEDED
+# and all three critical tags with evidence — is asserted by verdict_correct
+# and findings_tag_and_evidence and is untouched. The suite already solved this
+# same shape for case-001's verdict. Do not re-seed the fixture to force
+# full_redraft.
+expected_recommendation_kind: [targeted, full_redraft]

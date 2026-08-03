@@ -1,0 +1,36 @@
+docs_dir: docs/agents
+topic_name: cache-layer
+mode: rework
+was_stub: false
+expected_preserved_headings:
+  - Overview
+  - Cache Population
+  - Configuration
+  - Gotchas
+  - Links
+expected_unchanged_sections_contain:
+  - "The cache has no RBAC filtering of its own — anything the service account"
+  - "resync interval and object-type allowlist are read from the"
+expected_content_contains:
+  - "cache/informer_cache.go"
+expected_content_not_contains:
+  - "cache/kube_cache.go"
+expected_freshness: 100
+expected_prior_human_input: 25
+expected_prior_completeness: 50
+# human_sections_attribution recomputes and enforces human_input whenever
+# check_human_input_exact is unset (it defaults to True) — that would demand
+# round(1/5*100)=20 here, directly contradicting mode_stamping_and_scope's
+# expected_prior_human_input: 25 (rework must NOT recalculate human_input).
+# Explicitly false, matching case-002 and case-004's rework/decision-drift
+# cases, so only one judge owns this field for a mode that must not touch it.
+check_human_input_exact: false
+no_questions_expected: true
+expect_claims: true
+max_claims: 20
+forbidden_changelog_phrases:
+  - now supports
+  - was added
+  - previously
+  - formerly
+  - is now

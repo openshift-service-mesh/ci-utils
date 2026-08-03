@@ -1,0 +1,35 @@
+docs_dir: docs/agents
+scenario: "mechanical drift — a referenced file is genuinely gone, flagged not silently dropped, isolated from escalation"
+drift_topic: user-profiles
+expected_deleted_refs_flagged:
+  - "legacy_export.go"
+expected_reference_preserved_in_body:
+  - "legacy_export.go"
+# The "## Export" section has 2 references, 1 broken (50%) — deliberately
+# below §9's 60% escalation threshold, so this case isolates the deletion
+# path: a spec-correct run must NOT also escalate this topic.
+#
+# expected_completeness_recalculated is DERIVED, not chosen. §8 recalculates
+# completeness on every maintain pass unconditionally (unlike freshness, it
+# has no scan/shallow preservation rule) as (depth-1 subdirectories of
+# watch_paths containing at least one file referenced in the doc / total
+# depth-1 subdirectories) x 100. watch_paths is ["internal/profile/"], whose
+# depth-1 subdirectories are exactly `audit/` and `thumbnail/`:
+#   - thumbnail/ — resize.go's ResizeThumbnail is cited in "## Media
+#     Handling", so it counts toward the numerator
+#   - audit/ — audit_log.go is referenced nowhere in the doc
+# => 1 / 2 x 100 = 50.
+#
+# Both subdirectories exist to give the formula a defined denominator. An
+# earlier revision of this fixture had ZERO depth-1 subdirectories, which
+# made §8's denominator 0 — a state the spec gives no rule for, so no
+# completeness value (and no "completeness must not be X" property) was
+# derivable at all. Do not delete either subdirectory: `thumbnail/` and its
+# citation, and the deliberately-uncited `audit/`, are what make 50 the one
+# spec-determined answer.
+#
+# The stored prior value is 75, so this assertion also fails a run that
+# skips the §8 recalculation entirely; 50 differs from §9's escalation value
+# of 0, so it independently proves escalation did not fire.
+expect_no_escalation: true
+expected_completeness_recalculated: 50

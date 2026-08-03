@@ -1,6 +1,0 @@
-workspace_description: "Go REST API microservice with gin framework"
-expected_languages:
-  - go
-expected_frameworks:
-  - gin
-expected_architecture: "REST microservice"

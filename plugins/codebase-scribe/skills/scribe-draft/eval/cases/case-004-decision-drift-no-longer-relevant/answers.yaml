@@ -1,0 +1,16 @@
+# answers.yaml — LLM answerer guidance for case-004
+#
+# scribe-draft must present the flagged decision (data-retention-3) before
+# drafting. Choose the "No longer relevant — retire this decision" option:
+# the code now reads RETENTION_DAYS from the environment per tenant, so the
+# "fixed 90 days" claim is no longer accurate.
+
+decision_drift_choice: no_longer_relevant
+
+answer: >
+  The window is configurable per tenant via RETENTION_DAYS now — the fixed
+  90-day constraint no longer holds, so retire this decision rather than
+  updating its recorded date.
+
+skip: false
+standard_files_to_generate: []

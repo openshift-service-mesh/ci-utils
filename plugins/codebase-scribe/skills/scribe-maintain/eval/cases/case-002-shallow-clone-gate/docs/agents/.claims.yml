@@ -1,0 +1,11 @@
+_meta:
+  billing_extracted_at: "aaaa1111bbbb2222cccc3333dddd4444eeee5555"
+
+claims:
+  - id: billing-1
+    type: data_flow
+    topic: billing
+    claim: "Charges are created synchronously on checkout"
+    source: "internal/billing/legacy_charge.go"
+    provenance:
+      origin: inferred

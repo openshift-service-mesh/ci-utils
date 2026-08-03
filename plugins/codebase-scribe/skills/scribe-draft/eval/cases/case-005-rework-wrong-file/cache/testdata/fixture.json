@@ -1,0 +1,3 @@
+{
+  "note": "Unreferenced test fixture directory — not mentioned anywhere in cache-layer.md. Its presence makes a naive completeness recompute (0 of 1 referenced subdirectories) diverge from the topic's stored prior completeness (50), so the 'rework must not recalculate completeness' assertion is actually falsifiable."
+}

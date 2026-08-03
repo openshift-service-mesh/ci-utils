@@ -1,0 +1,15 @@
+# answers.yaml — LLM answerer guidance for case-002
+#
+# This is a redraft of an already-mature topic. If scribe-draft asks a §6
+# question about the new HandleOrders handler or the router pattern, answer
+# briefly; the case does not assert on which slug (if any) receives the new
+# credit — it only asserts that the pre-existing Gotchas prose about
+# centralized route registration survives verbatim.
+
+answer: >
+  HandleOrders follows the same net/http-only pattern as HandleUsers — no new
+  framework was introduced, it's just another handler registered in router.go.
+
+skip: false
+standard_files_to_generate: []
+decision_drift_choice: null

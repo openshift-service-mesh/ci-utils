@@ -1,0 +1,18 @@
+docs_dir: docs/agents
+topics:
+  - name: backend-architecture
+    title: Backend Architecture
+    watch_paths: ["cmd/", "internal/api/"]
+    migration_source: "AGENTS.md"
+    migration_sections:
+      - "## Architecture"
+      - "## Components"
+  - name: testing-strategy
+    title: Testing Strategy
+    watch_paths: ["internal/api/"]
+    migration_source: "AGENTS.md"
+    migration_sections:
+      - "## Testing"
+  - name: observability
+    title: Observability
+    watch_paths: ["internal/metrics/"]

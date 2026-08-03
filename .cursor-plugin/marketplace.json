@@ -23,7 +23,7 @@
       "name": "codebase-scribe",
       "source": "./plugins/codebase-scribe",
       "description": "Generate, enrich, and maintain agentic development documentation for any codebase",
-      "version": "1.2.6"
+      "version": "1.4.0"
     }
   ]
 }

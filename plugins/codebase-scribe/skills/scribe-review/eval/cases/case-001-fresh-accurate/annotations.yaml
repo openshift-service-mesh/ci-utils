@@ -1,0 +1,14 @@
+scenario: "fresh, accurate topic — no seeded errors"
+# Either verdict is accepted. PASS requires literally zero findings, and the
+# agent's Pass 2 heuristic "flag sections with significantly fewer concrete
+# references than the topic average" is live on any realistic fixture — here
+# `## Gotchas` carries two references against `## Overview`'s five. That is a
+# minor finding, which the agent's verdict rules map to PASS_WITH_ANNOTATIONS.
+# Tuning the fixture flat to force PASS is unwinnable (the previous round
+# repaired this same fixture for a different derivability problem and a new one
+# surfaced), and the assertion that actually discriminates a clean topic — an
+# empty Critical Findings section — is covered by findings_tag_and_evidence via
+# the empty expected_critical_tags below.
+expected_verdict: [PASS, PASS_WITH_ANNOTATIONS]
+expected_critical_tags: []
+expected_recommendation_kind: no_action

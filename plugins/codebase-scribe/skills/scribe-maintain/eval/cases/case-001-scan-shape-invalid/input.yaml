@@ -1,0 +1,33 @@
+topics:
+  - name: search-indexing
+    title: Search Indexing
+    tier: mature
+    # Step 5 row 3: `scan` is non-null and fails the shape test, so scan
+    # validation failed — `drifted`. Not `current`, which is what §1 keys on:
+    # this case's judge asserts §1 reported full churn, and §1 is skipped
+    # entirely for a topic classified `current`.
+    classification: drifted
+    scan: "not-a-real-sha"
+    freshness: 55
+    human_input: 0
+    completeness: 40
+    inferred_sections:
+      - id: key-entry-points
+        heading: "## Key Entry Points"
+      - id: patterns--conventions
+        heading: "## Patterns & Conventions"
+      - id: gotchas
+        heading: "## Gotchas"
+      - id: dependencies--context
+        heading: "## Dependencies & Context"
+      - id: links
+        heading: "## Links"
+    human_sections: []
+    decisions: []
+    watch_paths: ["internal/search/"]
+    stale_flags: []
+default_branch: main
+branching_strategy: main-only
+current_branch: main
+shallow: false
+docs_dir: docs/agents
