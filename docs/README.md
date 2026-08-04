@@ -10,7 +10,7 @@ This repository is a **Claude Code skills marketplace** — a central place wher
 /reload-plugins
 ```
 
-**Cursor:** `ln -s /path/to/ci-utils/plugins/code-reviewer ~/.cursor/plugins/code-reviewer`, then reload the window. Commands appear without namespace (e.g. `/review` instead of `/code-reviewer:review`).
+**Cursor:** `ln -s /path/to/ci-utils/plugins/code-reviewer ~/.cursor/plugins/local/code-reviewer`, then reload the window. Commands appear without namespace (e.g. `/review` instead of `/code-reviewer:review`).
 
 ## How the Pieces Fit Together
 

@@ -13,10 +13,10 @@ CI utilities plugin for the OpenShift Service Mesh (OSSM) team. Works natively w
 ### Cursor (local)
 
 ```bash
-ln -s /path/to/ci-utils/plugins/ossm-ci ~/.cursor/plugins/ossm-ci
+ln -s /path/to/ci-utils/plugins/ossm-ci ~/.cursor/plugins/local/ossm-ci
 ```
 
-Then restart Cursor or run **Developer: Reload Window**.
+Then restart Cursor or run **Developer: Reload Window**. If you previously symlinked to `~/.cursor/plugins/ossm-ci` (without `local/`), remove that link and recreate it at the path above.
 
 ## Commands
 

@@ -275,8 +275,7 @@ plugins/
 │   │   ├── style-review/
 │   │   └── testing-review/
 │   ├── templates/        # Brief and report templates
-│   ├── examples/         # Example project config
-│   └── install-cursor.sh # Cursor IDE install script
+│   └── examples/         # Example project config
 └── codebase-scribe/
     ├── commands/
     │   └── codebase-scribe.md  # Main orchestrator command
