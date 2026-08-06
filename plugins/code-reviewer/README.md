@@ -33,10 +33,10 @@ Or add to `~/.claude/settings.json`:
 Symlink the plugin to Cursor's local plugin directory:
 
 ```bash
-ln -s /path/to/ci-utils/plugins/code-reviewer ~/.cursor/plugins/code-reviewer
+ln -s /path/to/ci-utils/plugins/code-reviewer ~/.cursor/plugins/local/code-reviewer
 ```
 
-Then restart Cursor or run **Developer: Reload Window**.
+Then restart Cursor or run **Developer: Reload Window**. If you previously symlinked to `~/.cursor/plugins/code-reviewer` (without `local/`), remove that link and recreate it at the path above.
 
 ## Commands
 
