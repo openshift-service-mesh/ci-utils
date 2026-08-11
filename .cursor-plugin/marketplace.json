@@ -24,6 +24,12 @@
       "source": "./plugins/codebase-scribe",
       "description": "Generate, enrich, and maintain agentic development documentation for any codebase",
       "version": "1.4.0"
+    },
+    {
+      "name": "envoy-openssl-cve",
+      "source": "./plugins/envoy-openssl-cve",
+      "description": "Triage and review OSSM Jira CVE issues for the Envoy component (envoyproxy/envoy-openssl and envoyproxy/envoy)",
+      "version": "0.1.0"
     }
   ]
 }

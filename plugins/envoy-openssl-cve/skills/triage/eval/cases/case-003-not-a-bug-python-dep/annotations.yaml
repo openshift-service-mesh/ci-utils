@@ -1,0 +1,5 @@
+expected_pathway: "not_a_bug"
+expected_jira_transition: "Closed"
+expected_vex: "Component not Present"
+proxy_pr_needed: false
+notes: "aiohttp is in tools/base/requirements.txt — CI/build tooling only, does not ship in the proxyv2 binary. Skill must close the Jira issue as 'Not a Bug' (transition ID 61) with a comment explaining that the package is not included in the binary, and set VEX justification to 'Component not Present' via customfield_10873. No PR should be created."

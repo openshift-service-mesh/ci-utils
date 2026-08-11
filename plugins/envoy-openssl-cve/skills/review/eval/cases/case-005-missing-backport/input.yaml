@@ -1,0 +1,28 @@
+cve_id: "CVE-2025-47890"
+pathway: "A"
+prs:
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1601
+    branch: "main"
+    ci_status: "passing"
+    diff_summary: "abseil-cpp bumped from 20240116.0 to 20240722.0 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1602
+    branch: "release/v1.36"
+    ci_status: "passing"
+    diff_summary: "abseil-cpp bumped from 20240116.0 to 20240722.0 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy"
+    number: 2501
+    branch: "release/v1.38"
+    ci_status: "passing"
+    diff_summary: "abseil-cpp bumped from 20240116.0 to 20240722.0 in bazel/repository_locations.bzl"
+    consistent: true
+jira_issues:
+  - "OSSM-46600"
+missing_backport_branches:
+  - "release/v1.35"
+  - "release/v1.34"
+code_freeze_branches: []
+description: "abseil-cpp bump. PRs exist for main, release/v1.36, and release/v1.38 but backports are missing for release/v1.35 (OSSM 3.2) and release/v1.34 (OSSM 3.1) — both are active, OSSM-supported branches. All existing PRs have passing CI."

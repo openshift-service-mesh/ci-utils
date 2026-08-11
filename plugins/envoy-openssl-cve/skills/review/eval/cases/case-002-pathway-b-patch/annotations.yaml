@@ -1,0 +1,6 @@
+expected_outcome: "halt_ci_failure"
+expected_merge_order: []
+expected_jira_transition: "none"
+consistency_issues:
+  - "release/v1.34"
+notes: "The consistency check must catch that release/v1.34 is missing the tools/dependency/cve.yaml ignored_cves entry. This is a required component of Pathway B (without it the CVE scan will re-trigger on that branch after merge). Skill must flag this inconsistency and block merging until the PR is fixed. Despite CI passing on all PRs, the review must not proceed to approve/merge because of the missing cve.yaml entry. The expected_outcome is halt_ci_failure because from the reviewer's perspective this is a blocking defect (the CI would catch it too if cve.yaml verification is thorough, but even if CI passes the skill should block)."

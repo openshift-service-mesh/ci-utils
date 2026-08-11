@@ -1,0 +1,5 @@
+expected_pathway: "E"
+expected_jira_transition: "In Progress"
+expected_vex: null
+proxy_pr_needed: false
+notes: "Pathway E applies: release/v1.32 is past upstream Envoy EOL but OSSM 3.0 is Red Hat-supported. Skill must NOT use Pathway A directly — the dep version in the EOL branch may have diverged. Instead, it should find the fix commit in the higher envoy-openssl branch (e.g., release/v1.35) and cherry-pick or manually port it. The output must explicitly distinguish upstream EOL vs. OSSM EOL and choose Pathway E accordingly."

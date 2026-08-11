@@ -1,0 +1,10 @@
+expected_outcome: "approve_and_merge"
+expected_merge_order:
+  - "main"
+  - "release/v1.36"
+  - "release/v1.35"
+  - "release/v1.34"
+  - "release/v1.38"
+expected_jira_transition: "Release Pending"
+consistency_issues: []
+notes: "All PRs are green and consistent. Skill should approve and merge all PRs in the correct order: envoy-openssl main first, then envoy-openssl backports newest-to-oldest (v1.36, v1.35, v1.34), then the envoy PR for v1.38. After all merges, set fixVersions on OSSM-45678 and transition to Release Pending (ID 131). Note that v1.35's baseline was 1.66.0 and v1.34's was 1.65.0 — both bumped to 1.68.0 which is correct and not a consistency violation."

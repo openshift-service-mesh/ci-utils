@@ -1,0 +1,203 @@
+name: envoy-openssl-cve-review-eval
+description: Evaluate Envoy CVE review — cross-branch consistency, CI verification, merge order, and Jira Release Pending transition
+skill: envoy-openssl-cve:review
+
+execution:
+  mode: batch
+  arguments: "--headless"
+  timeout: 1800
+  max_budget_usd: 8.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: envoy-openssl-cve-review-eval
+
+dataset:
+  path: plugins/envoy-openssl-cve/skills/review/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * cve_id: CVE identifier
+      * pathway: fix pathway used (A | B | D | E | P-A | P-Go)
+      * prs: list of PR descriptors, each with:
+        - repo: repository name (envoyproxy/envoy-openssl | envoyproxy/envoy | openshift-service-mesh/proxy)
+        - number: PR number (integer)
+        - branch: target branch name
+        - ci_status: passing | failing | pending
+        - diff_summary: brief description of what the diff changes
+        - consistent: true/false (whether this PR is consistent with the others)
+      * jira_issues: list of Jira issue keys for this CVE
+      * missing_backport_branches: list of branch names missing a PR (empty list if complete)
+      * code_freeze_branches: list of branches currently in code freeze (empty list if none)
+    - annotations.yaml: expected review behavior:
+      * expected_outcome: approve_and_merge | halt_ci_failure | halt_missing_backport | halt_code_freeze
+      * expected_merge_order: list of branch names in expected merge sequence
+      * expected_jira_transition: Release Pending | none (if merge is halted)
+      * consistency_issues: list of branches with noted consistency problems (empty if none)
+      * notes: explanation of the expected behavior
+
+inputs:
+  tools:
+    - match: AskUserQuestion
+      prompt: |
+        Answer using values from input.yaml. Map questions to fields:
+        "CVE" or "CVE ID" → input.cve_id
+        "PRs" or "pull requests" → summarize input.prs as a list
+        "Jira" or "Jira issues" → input.jira_issues
+        "missing backports" → input.missing_backport_branches
+        "code freeze" → input.code_freeze_branches
+
+outputs:
+  - path: conversation
+    schema: |
+      The skill output contains:
+      - Per-PR summary (pathway, diff review, consistency verdict)
+      - Cross-branch consistency report
+      - CI status per PR
+      - Merge actions (approved/merged) or blockers (CI failure, missing backport, code freeze)
+      - Jira update confirmation or explanation of why transition was deferred
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 6.0
+
+  - name: consistency_checked
+    description: |
+      Verifies the output explicitly reports a cross-branch consistency check
+      and identifies any consistency issues noted in annotations.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      consistency_issues = annotations.get("consistency_issues", [])
+      has_consistency_section = "consistent" in conversation or "cross-branch" in conversation or "consistency" in conversation
+      if not has_consistency_section:
+          return (False, "No cross-branch consistency check found in output")
+      for issue in consistency_issues:
+          if issue.lower() not in conversation:
+              return (False, f"Expected consistency issue '{issue}' not flagged in output")
+      return (True, "Cross-branch consistency check performed and issues reported correctly")
+
+  - name: ci_verified
+    description: |
+      Verifies the output includes CI status for each PR and correctly identifies
+      any failing CI jobs.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      expected_outcome = annotations.get("expected_outcome", "")
+      has_ci_check = "ci" in conversation or "checks" in conversation or "passing" in conversation or "failing" in conversation
+      if not has_ci_check:
+          return (False, "No CI status check found in output")
+      if "halt_ci_failure" in expected_outcome:
+          if "fail" not in conversation and "blocking" not in conversation:
+              return (False, "CI failure expected to block merge but no failure/blocking language found")
+      return (True, "CI verification present in output")
+
+  - name: merge_order_correct
+    description: |
+      When the expected outcome is approve_and_merge, verifies the merge order
+      matches the expected sequence from annotations (main first, newest-to-oldest backports, proxy last).
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      expected_outcome = annotations.get("expected_outcome", "")
+      expected_order = annotations.get("expected_merge_order", [])
+      if "approve_and_merge" not in expected_outcome:
+          return (True, "Not a merge case — skip merge order check")
+      if not expected_order:
+          return (True, "No expected_merge_order in annotations — skip")
+      positions = []
+      for branch in expected_order:
+          pos = conversation.find(branch.lower())
+          positions.append((branch, pos))
+      found_all = all(p > -1 for _, p in positions)
+      if not found_all:
+          missing = [b for b, p in positions if p == -1]
+          return (False, f"Branches not mentioned in merge output: {missing}")
+      in_order = all(positions[i][1] <= positions[i+1][1] for i in range(len(positions)-1))
+      if not in_order:
+          return (False, f"Merge order incorrect — expected {[b for b, _ in positions]}")
+      return (True, f"Merge order correct: {[b for b, _ in positions]}")
+
+  - name: jira_updated
+    description: |
+      Verifies that the output describes updating Jira (setting fix versions,
+      transitioning to Release Pending) when the expected outcome is approve_and_merge.
+      For halted outcomes, verifies the output explains why Jira was not updated.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      expected_outcome = annotations.get("expected_outcome", "")
+      expected_jira = annotations.get("expected_jira_transition", "")
+      if "approve_and_merge" in expected_outcome:
+          has_release_pending = "release pending" in conversation or "131" in conversation
+          if not has_release_pending:
+              return (False, "Expected Release Pending Jira transition not mentioned after merge")
+          has_fix_version = "fix version" in conversation or "fixversions" in conversation
+          if not has_fix_version:
+              return (False, "Fix versions not set on Jira issues before transitioning")
+          return (True, "Jira updated correctly: fix versions set and Release Pending transition described")
+      if expected_jira == "none":
+          return (True, "Merge halted — Jira transition correctly deferred")
+      return (True, "Jira handling matches expected outcome")
+
+  - name: analysis_quality
+    description: |
+      LLM judge evaluating whether the review is thorough, correctly identifies blockers,
+      and follows the merge order and Jira update rules.
+    prompt: |
+      Evaluate the quality of this Envoy CVE review output.
+
+      Skill output:
+      {{ outputs.conversation }}
+
+      Expected outcome: {{ outputs.annotations.expected_outcome }}
+      Expected merge order: {{ outputs.annotations.expected_merge_order }}
+      Notes on expected behavior: {{ outputs.annotations.notes }}
+
+      Assess:
+      1. Is the fix pathway correctly identified from the PR diffs?
+      2. Is cross-branch consistency accurately reported?
+      3. Are CI failures or blockers correctly identified and acted upon?
+      4. Is the merge order correct (main first, backports newest-to-oldest, proxy last)?
+      5. Are Jira updates (fix versions, Release Pending transition) complete and correct?
+
+      Score 1-5:
+      1: Wrong pathway, missed blocker, or incorrect merge order
+      2: Correct pathway but missing consistency check or incomplete Jira update
+      3: Correct with minor gaps (e.g., one branch omitted, fix version not set)
+      4: Good review covering all steps correctly
+      5: Excellent review — all steps precise, blockers clearly handled, Jira fully updated
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  consistency_checked:
+    min_pass_rate: 0.9
+  ci_verified:
+    min_pass_rate: 1.0
+  merge_order_correct:
+    min_pass_rate: 0.9
+  jira_updated:
+    min_pass_rate: 0.9
+  analysis_quality:
+    min_mean: 3.5

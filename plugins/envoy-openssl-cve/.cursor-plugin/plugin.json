@@ -1,0 +1,8 @@
+{
+  "name": "envoy-openssl-cve",
+  "description": "Triage and review OSSM Jira CVE issues for the Envoy component (envoyproxy/envoy-openssl and envoyproxy/envoy)",
+  "version": "0.1.0",
+  "author": {
+    "name": "github.com/openshift-service-mesh"
+  }
+}

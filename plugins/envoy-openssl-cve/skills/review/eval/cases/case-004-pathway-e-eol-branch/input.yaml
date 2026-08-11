@@ -1,0 +1,27 @@
+cve_id: "CVE-2025-30065"
+pathway: "E"
+prs:
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1501
+    branch: "main"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.67.1 to 1.68.0 in bazel/repository_locations.bzl (Pathway A)"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1502
+    branch: "release/v1.36"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.67.1 to 1.68.0 in bazel/repository_locations.bzl (Pathway A)"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1503
+    branch: "release/v1.32"
+    ci_status: "passing"
+    diff_summary: "Manual port of grpc security fix for CVE-2025-30065 from release/v1.36 commit abc1234. The grpc BUILD and security_credentials.cc files were manually adapted due to API differences between v1.32 and v1.36 code. PR description documents source commit and explains that direct cherry-pick failed due to credential API refactoring between branches."
+    consistent: true
+jira_issues:
+  - "OSSM-46400"
+  - "OSSM-46401"
+missing_backport_branches: []
+code_freeze_branches: []
+description: "Mixed Pathway A (main, v1.36) and Pathway E (release/v1.32 — upstream-EOL branch). The v1.32 PR is a manual port with a structurally different diff because the grpc API diverged between the code bases. The PR description properly documents the source commit and explains the divergence. CI is passing on all PRs."

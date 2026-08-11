@@ -1,0 +1,217 @@
+name: envoy-openssl-cve-triage-eval
+description: Evaluate Envoy CVE triage — dependency classification, fix pathway selection, Jira lifecycle management, and PR creation guidance
+skill: envoy-openssl-cve:triage
+
+execution:
+  mode: batch
+  arguments: "--headless"
+  timeout: 1800
+  max_budget_usd: 8.0
+
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+permissions:
+  allow: []
+  deny: []
+
+mlflow:
+  experiment: envoy-openssl-cve-triage-eval
+
+dataset:
+  path: plugins/envoy-openssl-cve/skills/triage/eval/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML file with:
+      * cve_id: CVE identifier (e.g., "CVE-2025-12345")
+      * dep_name: affected dependency name
+      * dep_type: one of bazel_cpp | openssl | python_pip | envoy_cpp | proxy_vendor | proxy_go
+      * affected_version_range: version range that is vulnerable (e.g., "< 1.2.3")
+      * current_version: version currently in bazel/repository_locations.bzl or requirements.txt
+      * fixed_version: available fixed version (null if no release yet — patch only)
+      * branch: primary target Envoy branch (e.g., "release/v1.35")
+      * ossm_version: corresponding OSSM version (e.g., "3.2")
+      * upstream_eol: whether the upstream Envoy branch is past EOL (true/false)
+      * ossm_supported: whether the OSSM version is within Red Hat support (true/false)
+      * sync_pr_open: whether an auto-merge sync PR is already open in envoy-openssl (true/false/null for >=1.38)
+      * proxy_vendor_present: whether the dep is independently in ossm/vendor/ (true/false/null)
+    - annotations.yaml: expected triage behavior:
+      * expected_pathway: A | B | D | E | P-A | P-Go | not_a_bug | wont_do | wait_sync
+      * expected_jira_transition: In Progress | Closed | Won't Do
+      * expected_vex: VEX justification string if closing (null otherwise)
+      * proxy_pr_needed: true/false
+      * notes: explanation of the expected decision
+
+inputs:
+  tools:
+    - match: AskUserQuestion
+      prompt: |
+        Answer using values from input.yaml. Map questions to fields:
+        "CVE" or "CVE ID" → input.cve_id
+        "dependency" or "library" or "dep name" → input.dep_name
+        "dependency type" or "category" → input.dep_type
+        "affected version" or "vulnerable range" → input.affected_version_range
+        "current version" or "pinned version" → input.current_version
+        "fixed version" or "patched version" → input.fixed_version (answer "none available" if null)
+        "branch" or "target branch" → input.branch
+        "OSSM version" → input.ossm_version
+        "upstream EOL" or "past EOL" → input.upstream_eol
+        "OSSM supported" or "Red Hat support" → input.ossm_supported
+        "sync PR" or "auto-merge" → input.sync_pr_open
+        "proxy vendor" or "ossm/vendor" → input.proxy_vendor_present
+
+outputs:
+  - path: conversation
+    schema: |
+      The skill output contains:
+      - Dependency type classification (C++/Bazel, Python/pip, OpenSSL, etc.)
+      - Fix pathway determination (A, B, D, E, P-A, not_a_bug, wait_sync, etc.)
+      - Jira transition actions with IDs
+      - VEX justification when closing
+      - PR creation guidance or closure decision
+      - Branch coverage table
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 6.0
+
+  - name: pathway_determined
+    description: |
+      Verifies the output explicitly names a fix pathway or closure decision
+      and that it matches the expected_pathway from annotations.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      expected = annotations.get("expected_pathway", "").lower()
+      pathway_keywords = {
+          "a": ["pathway a", "bazel dep update", "bazel run //bazel:update"],
+          "b": ["pathway b", "patch-based", "patch file"],
+          "d": ["pathway d", "cherry-pick", "cherry pick"],
+          "e": ["pathway e", "manual backport", "upstream-eol"],
+          "p-a": ["pathway p-a", "proxy pathway", "ossm/vendor"],
+          "p-go": ["pathway p-go", "go get", "go mod tidy"],
+          "not_a_bug": ["not a bug", "not_a_bug"],
+          "wont_do": ["won't do", "wont do", "won't fix"],
+          "wait_sync": ["wait", "auto-merge", "sync pr", "incoming"],
+      }
+      if not expected:
+          return (True, "No expected_pathway in annotations — skip")
+      keywords = pathway_keywords.get(expected, [expected])
+      found = any(k in conversation for k in keywords)
+      if not found:
+          return (False, f"Expected pathway '{expected}' not clearly stated in output")
+      return (True, f"Pathway '{expected}' identified in output")
+
+  - name: jira_action_correct
+    description: |
+      Verifies the Jira transition described in the output matches the expected
+      transition from annotations (In Progress, Closed, Won't Do).
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      expected_transition = annotations.get("expected_jira_transition", "").lower()
+      if not expected_transition:
+          return (True, "No expected_jira_transition in annotations — skip")
+      transition_map = {
+          "in progress": ["in progress", "transition.*41", "id.*41"],
+          "closed": ["closed", "transition.*61", "id.*61"],
+          "won't do": ["won't do", "wont do"],
+      }
+      keywords = transition_map.get(expected_transition, [expected_transition])
+      import re
+      found = any(re.search(k, conversation) for k in keywords)
+      if not found:
+          return (False, f"Expected Jira transition '{expected_transition}' not found in output")
+      return (True, f"Jira transition '{expected_transition}' present in output")
+
+  - name: vex_when_closing
+    description: |
+      Verifies that when the expected action is to close as "Not a Bug", the output
+      includes a VEX justification value.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      expected_pathway = annotations.get("expected_pathway", "")
+      expected_vex = annotations.get("expected_vex", None)
+      if expected_pathway != "not_a_bug":
+          return (True, "Not a closure case — skip VEX check")
+      vex_values = ["component not present", "vulnerable code not present", "vulnerable code not in execute path"]
+      found_vex = any(v in conversation for v in vex_values)
+      if not found_vex:
+          return (False, "Not a Bug closure detected but no VEX justification found in output")
+      if expected_vex and expected_vex.lower() not in conversation:
+          return (False, f"Expected VEX '{expected_vex}' not found in output")
+      return (True, "VEX justification present for Not a Bug closure")
+
+  - name: proxy_classified
+    description: |
+      When proxy_pr_needed is true in annotations, verifies the output mentions the
+      proxy repo and proxy-specific fix pathway. When false, verifies no proxy PR
+      is incorrectly recommended.
+    check: |
+      conversation = outputs.get("conversation", "").lower()
+      annotations = outputs.get("annotations", {})
+      proxy_needed = annotations.get("proxy_pr_needed", None)
+      if proxy_needed is None:
+          return (True, "No proxy_pr_needed in annotations — skip")
+      proxy_mentioned = "openshift-service-mesh/proxy" in conversation or "proxy pathway" in conversation or "ossm/vendor" in conversation
+      if proxy_needed and not proxy_mentioned:
+          return (False, "Proxy PR needed but proxy pathway not mentioned in output")
+      if not proxy_needed and proxy_mentioned:
+          return (False, "Proxy PR not needed but proxy pathway incorrectly mentioned")
+      return (True, f"Proxy classification correct (needed={proxy_needed})")
+
+  - name: analysis_quality
+    description: |
+      LLM judge evaluating whether the triage is accurate, well-reasoned,
+      and follows the skill's decision rules.
+    prompt: |
+      Evaluate the quality of this Envoy CVE triage output.
+
+      Skill output:
+      {{ outputs.conversation }}
+
+      Expected pathway: {{ outputs.annotations.expected_pathway }}
+      Expected Jira transition: {{ outputs.annotations.expected_jira_transition }}
+      Notes on expected behavior: {{ outputs.annotations.notes }}
+
+      Assess:
+      1. Is the dependency type correctly classified?
+      2. Is the fix pathway selection well-reasoned and consistent with the decision rules?
+      3. Are the Jira API actions (transition IDs, VEX field, custom fields) correctly specified?
+      4. Is the branch coverage table complete and accurate?
+      5. Does the output avoid recommending a manual PR when auto-sync is incoming?
+
+      Score 1-5:
+      1: Incorrect pathway or Jira action, or critical rule violated
+      2: Pathway identified but missing key steps or incorrect Jira handling
+      3: Correct pathway and Jira actions but incomplete branch coverage or missing VEX
+      4: Good triage with correct pathway, Jira actions, and branch table
+      5: Excellent triage with all steps precise, complete, and well-justified
+
+thresholds:
+  budget_check:
+    min_pass_rate: 1.0
+  pathway_determined:
+    min_pass_rate: 1.0
+  jira_action_correct:
+    min_pass_rate: 0.9
+  vex_when_closing:
+    min_pass_rate: 1.0
+  proxy_classified:
+    min_pass_rate: 0.9
+  analysis_quality:
+    min_mean: 3.5

@@ -1,0 +1,5 @@
+expected_outcome: "halt_missing_backport"
+expected_merge_order: []
+expected_jira_transition: "none"
+consistency_issues: []
+notes: "release/v1.35 (OSSM 3.2) and release/v1.34 (OSSM 3.1) are active OSSM-supported branches that are missing backport PRs. Skill must flag both missing branches and block the merge — do not merge any of the existing PRs while backports are outstanding. The skill should clearly state that all active non-EOL branches require a PR before any merging proceeds. Jira remains in Code Review state. The skill should suggest creating the missing backport PRs as the next action."
