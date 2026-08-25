@@ -72,10 +72,8 @@ RUN useradd -m -u 1000 -g 0 -s /bin/bash claude
 
 COPY --chown=claude:root scripts/ /opt/ci-utils/scripts/
 COPY --chown=claude:root plugins/ /opt/ci-utils/plugins/
-COPY images/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN find /opt/ci-utils/scripts -name "*.sh" -exec chmod +x {} \; \
-    && chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN find /opt/ci-utils/scripts -name "*.sh" -exec chmod +x {} \;
 
 # ── Workspace and Claude config directories ───────────────────────────────────
 
@@ -110,5 +108,5 @@ ENV CLAUDE_CONFIG_DIR="/home/claude/.claude"
 #   KUBECONFIG (mount as volume: -v $HOME/.kube:/home/claude/.kube:ro)
 #   GITHUB_TOKEN
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+ENTRYPOINT ["claude"]
 CMD ["--help"]
