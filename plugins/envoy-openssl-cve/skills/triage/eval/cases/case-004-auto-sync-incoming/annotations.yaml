@@ -1,0 +1,5 @@
+expected_pathway: "wait_sync"
+expected_jira_transition: "In Progress"
+expected_vex: null
+proxy_pr_needed: false
+notes: "The auto-merge sync PR is already open in envoy-openssl — the fix is arriving automatically. Skill must NOT create a parallel manual fix PR. It should advise waiting for the sync PR to merge, then run the CVE scan to confirm resolution. The Jira issue should be transitioned to In Progress and the PR URL should be set to the auto-merge PR (once merged). Creating a duplicate manual PR here would be an error."

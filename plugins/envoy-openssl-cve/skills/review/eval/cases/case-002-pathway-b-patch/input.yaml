@@ -1,0 +1,32 @@
+cve_id: "CVE-2025-55281"
+pathway: "B"
+prs:
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1310
+    branch: "main"
+    ci_status: "passing"
+    diff_summary: "Added bazel/jwt_verify_lib-CVE-2025-55281.patch; updated patches= in bazel/repositories.bzl for jwt_verify_lib; added CVE-2025-55281 to tools/dependency/cve.yaml ignored_cves with comment referencing the patch"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1311
+    branch: "release/v1.36"
+    ci_status: "passing"
+    diff_summary: "Added bazel/jwt_verify_lib-CVE-2025-55281.patch; updated patches= in bazel/repositories.bzl; added CVE-2025-55281 to tools/dependency/cve.yaml ignored_cves"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1312
+    branch: "release/v1.35"
+    ci_status: "passing"
+    diff_summary: "Added bazel/jwt_verify_lib-CVE-2025-55281.patch; updated patches= in bazel/repositories.bzl; added CVE-2025-55281 to tools/dependency/cve.yaml ignored_cves"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1313
+    branch: "release/v1.34"
+    ci_status: "passing"
+    diff_summary: "Added bazel/jwt_verify_lib-CVE-2025-55281.patch; updated patches= in bazel/repositories.bzl — cve.yaml entry missing"
+    consistent: false
+jira_issues:
+  - "OSSM-46001"
+missing_backport_branches: []
+code_freeze_branches: []
+description: "Pathway B (patch-based fix) for jwt_verify_lib. Most PRs are correct but release/v1.34 is missing the cve.yaml ignored_cves entry — a consistency issue the reviewer must catch."

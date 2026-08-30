@@ -1,0 +1,8 @@
+expected_outcome: "approve_and_merge"
+expected_merge_order:
+  - "main"
+  - "release/v1.36"
+  - "release/v1.32"
+expected_jira_transition: "Release Pending"
+consistency_issues: []
+notes: "The release/v1.32 PR uses Pathway E (manual port) and has a structurally different diff — this is EXPECTED and must NOT be treated as a consistency violation. Skill must verify that: (1) the PR description identifies the source commit from release/v1.36, (2) the PR description explains why cherry-pick failed, and (3) CI passes (including a full build, since Pathway E requires it). All three checks pass here. Skill should approve all PRs, merge in order (main, v1.36, v1.32), then set fix versions on OSSM-46400 and OSSM-46401 and transition both to Release Pending."

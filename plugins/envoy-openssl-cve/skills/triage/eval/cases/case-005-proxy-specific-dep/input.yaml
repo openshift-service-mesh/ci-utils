@@ -1,0 +1,13 @@
+cve_id: "CVE-2025-43578"
+dep_name: "curl"
+dep_type: "proxy_vendor"
+affected_version_range: "< 8.11.0"
+current_version: "8.8.0"
+fixed_version: "8.11.0"
+branch: "release/v1.36"
+ossm_version: "3.3"
+upstream_eol: false
+ossm_supported: true
+sync_pr_open: false
+proxy_vendor_present: true
+description: "CVE in libcurl. The Jira issue targets proxyv2-rhel9. Investigation shows that curl does NOT appear in the main Envoy repo's bazel/repository_locations.bzl — it is independently vendored in the proxy repo at ossm/vendor/curl/ with its own version pin in ossm/bazelrc-vendor. This means a proxy-specific fix PR is required after fixing the Envoy repo."

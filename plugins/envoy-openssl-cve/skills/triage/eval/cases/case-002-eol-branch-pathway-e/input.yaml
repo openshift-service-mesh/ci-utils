@@ -1,0 +1,13 @@
+cve_id: "CVE-2025-30065"
+dep_name: "grpc"
+dep_type: "bazel_cpp"
+affected_version_range: "< 1.68.0"
+current_version: "1.60.0"
+fixed_version: "1.68.0"
+branch: "release/v1.32"
+ossm_version: "3.0"
+upstream_eol: true
+ossm_supported: true
+sync_pr_open: null
+proxy_vendor_present: false
+description: "Same CVE-2025-30065 but on release/v1.32 (OSSM 3.0). The upstream Envoy branch is past its EOL (2025-10-15) so it no longer receives auto-sync from envoyproxy/envoy. However, OSSM 3.0 is still within Red Hat support lifecycle. The fix must be manually backported — cherry-picked or ported from the corresponding commit in the higher envoy-openssl branch (e.g., release/v1.35 or v1.36)."

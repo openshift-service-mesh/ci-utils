@@ -1,0 +1,38 @@
+cve_id: "CVE-2025-30065"
+pathway: "A"
+prs:
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1201
+    branch: "main"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.67.1 to 1.68.0 in bazel/repository_locations.bzl; version, sha256, urls, release_date all updated"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1202
+    branch: "release/v1.36"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.67.1 to 1.68.0 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1203
+    branch: "release/v1.35"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.66.0 to 1.68.0 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1204
+    branch: "release/v1.34"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.65.0 to 1.68.0 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy"
+    number: 2301
+    branch: "release/v1.38"
+    ci_status: "passing"
+    diff_summary: "grpc bumped from 1.67.1 to 1.68.0 in bazel/repository_locations.bzl"
+    consistent: true
+jira_issues:
+  - "OSSM-45678"
+missing_backport_branches: []
+code_freeze_branches: []
+description: "Happy-path review: Pathway A (Bazel dep bump for grpc), all 5 PRs passing CI, version consistent across branches (each branch had a slightly different baseline but all bumped to 1.68.0), no missing backports, no code freeze."

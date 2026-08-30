@@ -1,0 +1,13 @@
+cve_id: "CVE-2025-47081"
+dep_name: "aiohttp"
+dep_type: "python_pip"
+affected_version_range: "< 3.11.16"
+current_version: "3.10.5"
+fixed_version: "3.11.16"
+branch: "release/v1.36"
+ossm_version: "3.3"
+upstream_eol: false
+ossm_supported: true
+sync_pr_open: null
+proxy_vendor_present: null
+description: "CVE in aiohttp, a Python package found in tools/base/requirements.txt. This is CI/build tooling only and does not ship in the proxyv2 binary. The Jira issue references the proxyv2-rhel9 image."

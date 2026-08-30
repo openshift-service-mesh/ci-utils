@@ -1,0 +1,5 @@
+expected_pathway: "P-A"
+expected_jira_transition: "In Progress"
+expected_vex: null
+proxy_pr_needed: true
+notes: "curl is independently vendored in ossm/vendor/curl/ in the proxy repo (not just inherited via Envoy SHA). Skill must identify this via the 7b-proxy check and apply Proxy Pathway P-A: update ossm/vendor/curl/ to the fixed version, run ossm/scripts/update-deps.sh to refresh ossm/bazelrc-vendor, and open one proxy PR per active proxy branch. The proxy PR must also bump ENVOY_SHA if an Envoy-side fix was also needed (in this case curl is proxy-specific, so the Envoy-side fix may be minimal or absent)."

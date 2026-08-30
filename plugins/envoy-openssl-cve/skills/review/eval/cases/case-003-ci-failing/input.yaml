@@ -1,0 +1,32 @@
+cve_id: "CVE-2025-22869"
+pathway: "A"
+prs:
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1420
+    branch: "main"
+    ci_status: "passing"
+    diff_summary: "re2 bumped from 2024-03-01 to 2024-07-02 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1421
+    branch: "release/v1.36"
+    ci_status: "passing"
+    diff_summary: "re2 bumped from 2024-03-01 to 2024-07-02 in bazel/repository_locations.bzl"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1422
+    branch: "release/v1.35"
+    ci_status: "failing"
+    diff_summary: "re2 bumped from 2024-03-01 to 2024-07-02 in bazel/repository_locations.bzl — CVE scan job failed: cve_test still reports CVE-2025-22869 for the updated version"
+    consistent: true
+  - repo: "envoyproxy/envoy-openssl"
+    number: 1423
+    branch: "release/v1.34"
+    ci_status: "passing"
+    diff_summary: "re2 bumped from 2024-01-01 to 2024-07-02 in bazel/repository_locations.bzl"
+    consistent: true
+jira_issues:
+  - "OSSM-46200"
+missing_backport_branches: []
+code_freeze_branches: []
+description: "Pathway A re2 bump. PR 1422 for release/v1.35 has a failing CVE scan — the cve_test job still reports a hit for the updated version. This suggests the fixed version pinned in this branch does not actually resolve the CVE (possibly the wrong sha256 was computed or the version string was incorrect)."

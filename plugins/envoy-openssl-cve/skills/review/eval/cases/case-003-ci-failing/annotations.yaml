@@ -1,0 +1,5 @@
+expected_outcome: "halt_ci_failure"
+expected_merge_order: []
+expected_jira_transition: "none"
+consistency_issues: []
+notes: "PR 1422 (release/v1.35) has a failing CVE scan. Skill must halt the entire merge sequence — do not merge any PR, even those with passing CI. The reviewer should report the specific failing job (cve_test on release/v1.35), ask the user how to proceed, and suggest investigating whether the version bump is incorrect (wrong sha256 or the updated version does not actually patch the CVE). Jira remains in Code Review state until all PRs pass."

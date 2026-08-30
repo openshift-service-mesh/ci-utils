@@ -1,0 +1,13 @@
+cve_id: "CVE-2025-22869"
+dep_name: "re2"
+dep_type: "bazel_cpp"
+affected_version_range: "< 2024-07-02"
+current_version: "2024-03-01"
+fixed_version: "2024-07-02"
+branch: "release/v1.35"
+ossm_version: "3.2"
+upstream_eol: false
+ossm_supported: true
+sync_pr_open: true
+proxy_vendor_present: false
+description: "CVE in re2. The upstream envoyproxy/envoy already has a merged PR for this CVE. An auto-merge PR is currently open in envoyproxy/envoy-openssl targeting release/v1.35. This is the < 1.38 regime where the 6-hour sync applies."
