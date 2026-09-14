@@ -56,7 +56,7 @@ This registers the repo as a marketplace using the `name` field from its `.claud
 
 ### Codex
 
-Codex reads the same reachability skill through the project-local `.codex/skills/ossm-cve-reachability` symlink. Restart Codex after installing or changing the skill, then invoke it with:
+Codex can also use this skill via a project-local `.codex/skills/ossm-cve-reachability` symlink (create it in the consuming project; it is not committed in this repo). Restart Codex after installing or changing the skill, then invoke it with:
 
 ```
 Use $ossm-cve-reachability to analyze CVE-2025-12345.
