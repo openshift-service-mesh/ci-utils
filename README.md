@@ -25,6 +25,7 @@ Available plugins:
 - **`ossm-ci`** — CI utilities: release confidence scoring, E2E test generation, AWS resource inventory, and Prow CI metrics
 - **`code-reviewer`** — Multi-phase code review with auto-maintained project conventions
 - **`codebase-scribe`** — Generate, enrich, and maintain agentic development documentation for any codebase
+- **`ossm-cve-reachability`** — Read-only CVE reachability analysis for OSSM Istio, Sail Operator, and Kiali repositories
 
 ### Installation
 
@@ -44,12 +45,21 @@ This registers the repo as a marketplace using the `name` field from its `.claud
 /plugin install ossm-ci@ci-utils
 /plugin install code-reviewer@ci-utils
 /plugin install codebase-scribe@ci-utils
+/plugin install ossm-cve-reachability@ci-utils
 ```
 
 #### Step 3: Reload plugins
 
 ```
 /reload-plugins
+```
+
+### Codex
+
+Codex can also use this skill via a project-local `.codex/skills/ossm-cve-reachability` symlink (create it in the consuming project; it is not committed in this repo). Restart Codex after installing or changing the skill, then invoke it with:
+
+```
+Use $ossm-cve-reachability to analyze CVE-2025-12345.
 ```
 
 > **What does NOT work**
@@ -68,6 +78,7 @@ This registers the repo as a marketplace using the `name` field from its `.claud
 | `ossm-ci` | `/ossm-ci:confidence` `/ossm-ci:generate-e2e-tests` `/ossm-ci:aws-scan` `/ossm-ci:prow-metrics` | [`plugins/ossm-ci/README.md`](plugins/ossm-ci/README.md) |
 | `code-reviewer` | `/code-reviewer:setup` `/code-reviewer:review` `/code-reviewer:ci-review` | [`plugins/code-reviewer/README.md`](plugins/code-reviewer/README.md) |
 | `codebase-scribe` | `/codebase-scribe` | [`plugins/codebase-scribe/README.md`](plugins/codebase-scribe/README.md) |
+| `ossm-cve-reachability` | `/ossm-cve-reachability:analyze` | [`plugins/ossm-cve-reachability/README.md`](plugins/ossm-cve-reachability/README.md) |
 
 New to the skill system? See **[docs/README.md](docs/README.md)** for an overview of how plugins, commands, skills, and agents fit together, and **[docs/contributing.md](docs/contributing.md)** for how to add a skill.
 

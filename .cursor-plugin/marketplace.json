@@ -30,6 +30,12 @@
       "source": "./plugins/envoy-openssl-cve",
       "description": "Triage and review OSSM Jira CVE issues for the Envoy component (envoyproxy/envoy-openssl and envoyproxy/envoy)",
       "version": "0.1.0"
+    },
+    {
+      "name": "ossm-cve-reachability",
+      "source": "./plugins/ossm-cve-reachability",
+      "description": "Read-only CVE reachability analysis for OSSM Istio, Sail Operator, and Kiali repositories",
+      "version": "0.1.0"
     }
   ]
 }
