@@ -11,12 +11,16 @@ Generate project reference docs autonomously for CI. This is the setup command (
 
 ## When to Use
 
-- **DO:** Use when `/code-reviewer:ci-review` detects that `.claude/code-reviewer/reference/` does not exist or contains no `.md` files
+- **DO:** Use when `$code-reviewer:ci-review` detects that `.code-reviewer/reference/` (or the legacy `.claude/code-reviewer/reference/`) does not exist or contains no `.md` files
 - **DO NOT:** Use in interactive sessions — use `/code-reviewer:setup` instead
 
 ## Workflow
 
 Follow the same process as `commands/setup.md` with these overrides:
+
+Use `.code-reviewer/` as the output directory in Codex. If a project already
+has only `.claude/code-reviewer/`, read it as legacy input and do not delete or
+overwrite it.
 
 - **Skip Step 0** — Do not ask "Refresh or Start fresh?". Always generate fresh.
 - **Run Step 1 (Discovery)** — Identical to the setup command. No changes.

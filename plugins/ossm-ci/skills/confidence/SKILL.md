@@ -1,5 +1,5 @@
 ---
-name: OSSM Release Confidence Score
+name: confidence
 description: Calculate a data-driven release confidence score (1-10) for an OSSM build using Report Portal test data
 command: /ossm-ci:confidence
 ---

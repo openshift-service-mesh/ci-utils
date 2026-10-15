@@ -11,14 +11,14 @@ Evaluate whether the code change is properly tested. This is the "is this proper
 
 ## When to Use
 
-- **DO:** Use when dispatched by the `/code-reviewer:review` or `/code-reviewer:review:testing` command
+- **DO:** Use when dispatched by `$code-reviewer:review` for the testing phase
 - **DO NOT:** Use for correctness, security, or style — those have dedicated phases
 
 ## Input
 
 You receive:
 - A **unit-scoped review brief** for the specific review unit you're checking
-- The project's **testing practices** reference doc from `.claude/code-reviewer/reference/testing-practices.md`
+- The project's **testing practices** reference doc from the resolved guidance directory (`.code-reviewer/` or legacy `.claude/code-reviewer/`)
 
 ## Review Focus
 

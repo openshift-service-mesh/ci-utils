@@ -1,5 +1,5 @@
 ---
-name: Documentation to Go E2E Test Generator
+name: generate-e2e-tests
 description: Generate comprehensive Go E2E tests using BDD Ginkgo from project documentation
 command: /ossm-ci:generate-e2e-tests
 ---

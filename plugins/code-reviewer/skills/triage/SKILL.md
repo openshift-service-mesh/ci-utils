@@ -11,23 +11,25 @@ Analyze the current git diff and produce structured review briefs that subagents
 
 ## When to Use
 
-- **DO:** Use at the start of every `/code-reviewer:review` or `/code-reviewer:review:*` invocation, after the setup guard passes
+- **DO:** Use at the start of every `$code-reviewer:review` invocation, after the setup guard passes
 - **DO NOT:** Use as a standalone review — this produces briefs, not findings
 
 ## Setup Guard
 
-Before doing any analysis, check that both exist:
-1. `.claude/code-reviewer/config.md` (project config)
-2. `.claude/code-reviewer/reference/` directory with at least one reference doc
+Before doing any analysis, resolve the project guidance directory. Prefer
+`.code-reviewer/`; if it is absent, use the legacy `.claude/code-reviewer/`.
+Check that both exist in the selected directory:
+1. `config.md` (project config)
+2. `reference/` with at least one reference doc
 
 If either is missing, stop and tell the user:
-> "No project configuration found. Run `/code-reviewer:setup` first to analyze your codebase and generate reference docs."
+> "No project configuration found. Run `$code-reviewer:setup` first to analyze your codebase and generate reference docs."
 
 ## Workflow
 
 ### Step 1: Capture the Diff
 
-1. Read `.claude/code-reviewer/config.md` to get `base_branch` (default: auto-detect `main` or `master`)
+1. Read `<guidance-dir>/config.md` to get `base_branch` (default: auto-detect `main` or `master`)
 2. Run `git diff {base_branch}...HEAD --stat` to get the file list and change summary
 3. Run `git diff {base_branch}...HEAD` to get the full diff
 4. Run `git log {base_branch}..HEAD --oneline` to get commit messages
@@ -35,8 +37,8 @@ If either is missing, stop and tell the user:
 
 ### Step 2: Load Context
 
-1. Read `.claude/code-reviewer/config.md` — parse YAML frontmatter for config, read markdown body for project context
-2. Read all reference docs from `.claude/code-reviewer/reference/`:
+1. Read `<guidance-dir>/config.md` — parse YAML frontmatter for config, read markdown body for project context
+2. Read all reference docs from `<guidance-dir>/reference/`:
    - `style-guide.md`
    - `testing-practices.md`
    - `security-posture.md` (if exists)

@@ -1,0 +1,10 @@
+{
+  "name": "ossm-ci",
+  "version": "0.1.0",
+  "description": "OSSM CI utilities: release confidence scoring, E2E test generation, AWS resource inventory, and Prow CI metrics",
+  "author": { "name": "github.com/openshift-service-mesh" },
+  "repository": "https://github.com/openshift-service-mesh/ci-utils",
+  "license": "Apache-2.0",
+  "keywords": ["openshift", "service-mesh", "ci", "prow", "release"],
+  "skills": "./skills/"
+}

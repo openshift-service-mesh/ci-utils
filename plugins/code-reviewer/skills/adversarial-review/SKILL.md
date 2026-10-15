@@ -11,7 +11,7 @@ Critique the code change from an adversarial perspective. Look for things that a
 
 ## When to Use
 
-- **DO:** Use when dispatched by the `/code-reviewer:review` or `/code-reviewer:review:adversarial` command
+- **DO:** Use when dispatched by `$code-reviewer:review` for the adversarial phase
 - **DO NOT:** Use for style or test coverage concerns — those have dedicated phases
 
 ## Input

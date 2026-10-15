@@ -1,6 +1,19 @@
 # codebase-scribe
 
-A Claude Code plugin that generates, enriches, and maintains agentic development documentation for any codebase.
+A Codex and Claude Code plugin that generates, enriches, and maintains agentic development documentation for any codebase.
+
+## Codex
+
+Register the repository marketplace and enable `codebase-scribe` from Codex's
+plugin directory:
+
+```
+codex plugin marketplace add https://github.com/openshift-service-mesh/ci-utils.git --ref main
+```
+
+Invoke the workflow with `$codebase-scribe`. Its focused skills are available
+as `$codebase-scribe:scribe-discover`, `$codebase-scribe:scribe-draft`,
+`$codebase-scribe:scribe-maintain`, and `$codebase-scribe:scribe-review`.
 
 ## What It Does
 

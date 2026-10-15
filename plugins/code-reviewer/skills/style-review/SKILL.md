@@ -11,14 +11,14 @@ Check the code change against the project's documented style conventions. This i
 
 ## When to Use
 
-- **DO:** Use when dispatched by the `/code-reviewer:review` or `/code-reviewer:review:style` command
+- **DO:** Use when dispatched by `$code-reviewer:review` for the style phase
 - **DO NOT:** Use for correctness, security, or test coverage — those have dedicated phases
 
 ## Input
 
 You receive:
 - A **unit-scoped review brief** for the specific review unit you're checking
-- The project's **style guide** reference doc from `.claude/code-reviewer/reference/style-guide.md`
+- The project's **style guide** reference doc from the resolved guidance directory (`.code-reviewer/` or legacy `.claude/code-reviewer/`)
 
 ## Review Focus
 

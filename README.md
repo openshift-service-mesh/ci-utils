@@ -4,6 +4,7 @@ Shared utilities to standardize and simplify build, test, and deployment pipelin
 
 ## Table of Contents
 
+- [Codex Plugins](#codex-plugins)
 - [Claude Code Plugin](#claude-code-plugin)
   - [Installation](#installation)
     - [Step 1: Add the marketplace](#step-1-add-the-marketplace)
@@ -17,6 +18,33 @@ Shared utilities to standardize and simplify build, test, and deployment pipelin
   - [ai-helpers/](#ai-helpers)
   - [plugins/](#plugins)
   - [images/](#images)
+
+---
+
+## Codex Plugins
+
+The repository includes a Codex marketplace at `.agents/plugins/marketplace.json`.
+Each plugin also has a `.codex-plugin/plugin.json` manifest that exposes its
+`skills/` directory.
+
+For a Git checkout, register the repository with:
+
+```
+codex plugin marketplace add https://github.com/openshift-service-mesh/ci-utils.git --ref main
+```
+
+Invoke skills with Codex's `$plugin:skill` syntax:
+
+```
+$code-reviewer:setup
+$code-reviewer:review
+$code-reviewer:review adversarial
+$codebase-scribe
+$ossm-ci:confidence
+```
+
+The Codex review workflow writes project guidance under `.code-reviewer/`.
+Existing `.claude/code-reviewer/` files remain supported for Claude Code.
 
 ---
 
@@ -153,7 +181,7 @@ See [`plugins/codebase-scribe/README.md`](plugins/codebase-scribe/README.md) for
 
 ## Security Guidelines for Skill Contributions
 
-Skills in this repository run inside Claude Code sessions, which means they can potentially execute commands on a user's machine and interact with their credentials, cloud accounts, and production systems. Contributors must follow these rules when adding or modifying skills.
+Skills in this repository run inside Claude Code or Codex sessions, which means they can potentially execute commands on a user's machine and interact with their credentials, cloud accounts, and production systems. Contributors must follow these rules when adding or modifying skills.
 
 ### What skills MUST NOT do
 
