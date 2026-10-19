@@ -1,8 +1,24 @@
 # code-reviewer Plugin
 
-Multi-phase, subagent-driven code review with auto-maintained project conventions. Works natively with both **Claude Code** and **Cursor** as a plugin.
+Multi-phase, subagent-driven code review with auto-maintained project conventions. Works with **Codex**, **Claude Code**, and **Cursor**.
 
 ## Installation
+
+### Codex
+
+```
+codex plugin marketplace add https://github.com/ferhoyos/ci-utils.git --ref feat/codex-plugin-support
+```
+
+Then enable the **code-reviewer** plugin in Codex (`/plugins` or the app Plugins directory).
+
+**Codex has no `/code-reviewer` slash command** — `commands/` is for Claude Code only. Invoke:
+
+- `$code-reviewer` or `$code-reviewer:code-reviewer` — full review pipeline (main entry)
+- `$code-reviewer:setup` — project onboarding
+- `$code-reviewer:review` — alias of the same pipeline
+
+You may see phase skills (`adversarial-review`, `style-review`, …) and agent prompts in the picker; those are sub-agent building blocks. Use `$code-reviewer` so triage and consolidation run.
 
 ### Claude Code (via marketplace)
 

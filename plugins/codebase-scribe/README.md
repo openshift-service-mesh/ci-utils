@@ -1,6 +1,14 @@
 # codebase-scribe
 
-A plugin that generates, enriches, and maintains agentic development documentation for any codebase. Ships for both **Claude Code** and **Cursor**; Cursor compatibility is based on Cursor's published documentation, not on testing against a running Cursor instance (see [Known Limitations in Cursor](#known-limitations-in-cursor)).
+A plugin that generates, enriches, and maintains agentic development documentation for any codebase. Ships for **Codex**, **Claude Code**, and **Cursor**; Cursor compatibility is based on Cursor's published documentation, not on testing against a running Cursor instance (see [Known Limitations in Cursor](#known-limitations-in-cursor)).
+
+## Codex
+
+```
+codex plugin marketplace add https://github.com/ferhoyos/ci-utils.git --ref feat/codex-plugin-support
+```
+
+Use `$codebase-scribe` (skill in `skills/codebase-scribe/`).
 
 ## What It Does
 
